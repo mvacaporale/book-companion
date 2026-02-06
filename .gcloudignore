@@ -14,5 +14,6 @@ __pycache__
 
 # Development files
 .env
-*.md
+CLAUDE.md
+tasks.md
 tests/
