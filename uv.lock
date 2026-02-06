@@ -167,6 +167,7 @@ dependencies = [
     { name = "rapidfuzz" },
     { name = "rich" },
     { name = "tenacity" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -185,6 +186,7 @@ requires-dist = [
     { name = "rapidfuzz", specifier = ">=3.0.0" },
     { name = "rich", specifier = ">=14.0.0" },
     { name = "tenacity", specifier = ">=8.0.0" },
+    { name = "uvicorn", specifier = ">=0.40.0" },
 ]
 
 [[package]]

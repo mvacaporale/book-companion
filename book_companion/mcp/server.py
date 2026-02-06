@@ -990,11 +990,17 @@ def main():
     port = int(os.environ.get("PORT", "8765"))
 
     if transport == "sse":
+        import uvicorn
+
         print(f"Starting MCP server with SSE transport on http://0.0.0.0:{port}/sse")
-        mcp.run(transport="sse", host="0.0.0.0", port=port)
+        app = mcp.sse_app()
+        uvicorn.run(app, host="0.0.0.0", port=port)
     elif transport == "http":
+        import uvicorn
+
         print(f"Starting MCP server with HTTP transport on http://0.0.0.0:{port}/mcp")
-        mcp.run(transport="http", host="0.0.0.0", port=port)
+        app = mcp.streamable_http_app()
+        uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         # Default: stdio for Claude Desktop
         mcp.run()
