@@ -23,22 +23,11 @@ from book_companion.models import (
 from book_companion.utils.costs import calculate_cost, format_cost, format_tokens
 
 # Initialize FastMCP server with transport security settings for Cloud Run
-# Allow Cloud Run hostnames and Claude.ai to connect
+# Disable DNS rebinding protection - Cloud Run provides its own security layer
 mcp = FastMCP(
     "book-companion",
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=[
-            "localhost:*",
-            "127.0.0.1:*",
-            "*.run.app:*",  # Cloud Run hostnames
-            "*.run.app",
-        ],
-        allowed_origins=[
-            "https://claude.ai",
-            "https://*.claude.ai",
-            "http://localhost:*",
-        ],
+        enable_dns_rebinding_protection=False,
     ),
 )
 
