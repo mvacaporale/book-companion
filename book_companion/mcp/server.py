@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from book_companion.models import (
     Book,
@@ -21,8 +22,25 @@ from book_companion.models import (
 )
 from book_companion.utils.costs import calculate_cost, format_cost, format_tokens
 
-# Initialize FastMCP server
-mcp = FastMCP("book-companion")
+# Initialize FastMCP server with transport security settings for Cloud Run
+# Allow Cloud Run hostnames and Claude.ai to connect
+mcp = FastMCP(
+    "book-companion",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[
+            "localhost:*",
+            "127.0.0.1:*",
+            "*.run.app:*",  # Cloud Run hostnames
+            "*.run.app",
+        ],
+        allowed_origins=[
+            "https://claude.ai",
+            "https://*.claude.ai",
+            "http://localhost:*",
+        ],
+    ),
+)
 
 # Thread pool for running sync code
 _executor = ThreadPoolExecutor(max_workers=4)
