@@ -1,22 +1,31 @@
 # Book Companion MCP Server - Cloud Run Deployment
 FROM python:3.11-slim
 
+# Install system dependencies for PDF parsing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv for fast dependency management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml uv.lock* ./
+# Copy all project files
+COPY pyproject.toml uv.lock ./
 COPY book_companion/ ./book_companion/
 
-# Install dependencies
-RUN uv sync --frozen --no-dev
+# Create virtual environment and install dependencies
+RUN uv venv /app/.venv && \
+    . /app/.venv/bin/activate && \
+    uv pip install -e .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 # Data directory - can be overridden or mounted
 ENV BOOKRC_DB_PATH=/data/bookrc
 
@@ -24,5 +33,4 @@ ENV BOOKRC_DB_PATH=/data/bookrc
 EXPOSE 8080
 
 # Run MCP server with SSE transport
-# Cloud Run sets PORT env var, we use 8080 by default
-CMD ["uv", "run", "python", "-m", "book_companion.mcp.server", "sse"]
+CMD ["python", "-m", "book_companion.mcp.server", "sse"]
