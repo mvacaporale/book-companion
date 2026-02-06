@@ -1,0 +1,18 @@
+# Ignore for Cloud Build
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+*.egg-info
+
+# Local data (we'll sync from GCS instead)
+# Don't include if bundling data in image
+
+# Development files
+.env
+*.md
+tests/

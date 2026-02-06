@@ -1,0 +1,39 @@
+[project]
+name = "book-companion"
+version = "0.1.0"
+description = "CLI application to chat with books using RAG and LLMs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # CLI
+    "click>=8.0.0",
+    "rich>=14.0.0",
+    # Parsing
+    "pymupdf>=1.24.0",
+    "ebooklib>=0.18.0",
+    "beautifulsoup4>=4.12.0",
+    # Vector DB & Embeddings
+    "chromadb>=0.4.0",
+    "google-genai>=1.47.0",
+    # LLM
+    "anthropic>=0.43.0",
+    # Utils
+    "pydantic>=2.0.0",
+    "tenacity>=8.0.0",
+    # MCP Server
+    "mcp>=1.0.0",
+    # Google Drive Integration
+    "google-api-python-client>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "rapidfuzz>=3.0.0",
+]
+
+[project.scripts]
+bookrc = "book_companion.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["book_companion"]
