@@ -978,6 +978,8 @@ def main():
     - sse: For remote access via HTTP/SSE (Claude web, tunnels, Cloud Run)
     - http: For remote access via Streamable HTTP
 
+    All HTTP modes also include a REST API at /api/* for Obsidian plugin support.
+
     Usage:
         python -m book_companion.mcp.server          # stdio (default)
         python -m book_companion.mcp.server sse      # SSE on PORT or 8765
@@ -998,15 +1000,29 @@ def main():
 
     if transport == "sse":
         import uvicorn
+        from starlette.middleware.cors import CORSMiddleware
 
         print(f"Starting MCP server with SSE transport on http://0.0.0.0:{port}/sse")
         app = mcp.sse_app()
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["app://obsidian.md"],
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type"],
+        )
         uvicorn.run(app, host="0.0.0.0", port=port)
     elif transport == "http":
         import uvicorn
+        from starlette.middleware.cors import CORSMiddleware
 
         print(f"Starting MCP server with HTTP transport on http://0.0.0.0:{port}/mcp")
         app = mcp.streamable_http_app()
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["app://obsidian.md"],
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type"],
+        )
         uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         # Default: stdio for Claude Desktop

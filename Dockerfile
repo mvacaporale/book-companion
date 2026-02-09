@@ -32,5 +32,5 @@ ENV BOOKRC_DB_PATH=/data/bookrc
 # Expose port
 EXPOSE 8080
 
-# Run MCP server with SSE transport
-CMD ["python", "-m", "book_companion.mcp.server", "sse"]
+# Run MCP server with HTTP transport
+CMD ["python", "-m", "book_companion.mcp.server", "http"]
