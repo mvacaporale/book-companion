@@ -42,6 +42,8 @@ jobs:
             --max-instances 2 \
             --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" \
             --set-env-vars "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" \
+            --set-env-vars "GOOGLE_DRIVE_TOKEN=${{ secrets.GOOGLE_DRIVE_TOKEN }}" \
+            --set-env-vars "GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
             --set-env-vars "BOOKRC_DB_PATH=/data/bookrc" \
             --execution-environment gen2 \
             --add-volume "name=bookrc-data,type=cloud-storage,bucket=${{ env.BUCKET_NAME }}" \
