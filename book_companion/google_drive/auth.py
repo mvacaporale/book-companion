@@ -18,6 +18,7 @@ DEFAULT_TOKEN_PATH = Path.home() / ".bookrc" / "google_token.json"
 
 # Environment variable names for Cloud Run deployment
 ENV_GOOGLE_DRIVE_TOKEN = "GOOGLE_DRIVE_TOKEN"
+ENV_GOOGLE_DRIVE_TOKEN_B64 = "GOOGLE_DRIVE_TOKEN_B64"
 ENV_GOOGLE_DRIVE_FOLDER_ID = "GOOGLE_DRIVE_FOLDER_ID"
 
 
@@ -25,12 +26,32 @@ def _get_credentials_from_env() -> Optional[Credentials]:
     """
     Try to load credentials from environment variable.
 
-    For Cloud Run deployment, set GOOGLE_DRIVE_TOKEN to the JSON contents
-    of the token file (from ~/.bookrc/google_token.json after local auth).
+    For Cloud Run deployment, set either:
+    - GOOGLE_DRIVE_TOKEN: Raw JSON contents of token file
+    - GOOGLE_DRIVE_TOKEN_B64: Base64-encoded JSON (preferred, avoids shell escaping)
 
     Returns:
         Credentials if env var is set and valid, None otherwise
     """
+    import base64
+
+    # Try base64-encoded token first (preferred for Cloud Run)
+    token_b64 = os.environ.get(ENV_GOOGLE_DRIVE_TOKEN_B64)
+    if token_b64:
+        try:
+            token_json = base64.b64decode(token_b64).decode("utf-8")
+            token_data = json.loads(token_json)
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+
+            if creds and creds.valid:
+                return creds
+        except Exception:
+            pass
+
+    # Fall back to raw JSON token
     token_json = os.environ.get(ENV_GOOGLE_DRIVE_TOKEN)
     if not token_json:
         return None

@@ -31,6 +31,9 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          # Base64 encode the Google Drive token to avoid shell escaping issues
+          DRIVE_TOKEN_B64=$(echo '${{ secrets.GOOGLE_DRIVE_TOKEN }}' | base64 -w 0)
+
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --source . \
             --region ${{ env.REGION }} \
@@ -42,7 +45,7 @@ jobs:
             --max-instances 2 \
             --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" \
             --set-env-vars "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" \
-            --set-env-vars "GOOGLE_DRIVE_TOKEN=${{ secrets.GOOGLE_DRIVE_TOKEN }}" \
+            --set-env-vars "GOOGLE_DRIVE_TOKEN_B64=${DRIVE_TOKEN_B64}" \
             --set-env-vars "GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
             --set-env-vars "BOOKRC_DB_PATH=/data/bookrc" \
             --execution-environment gen2 \
