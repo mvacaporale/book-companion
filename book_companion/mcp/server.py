@@ -74,19 +74,26 @@ async def run_sync(func, *args, **kwargs):
 
 
 @mcp.tool()
-async def list_books() -> str:
+async def list_books(topic: Optional[str] = None) -> str:
     """List all ingested books with metadata.
+
+    Args:
+        topic: Optional topic/theme to filter by (fuzzy matches against
+               book themes and chapter topics from the book index)
 
     Returns a JSON array of books with their IDs, titles, authors, formats,
     chunk counts, and whether they have an index (summaries).
     """
+    from rapidfuzz import fuzz
+
     ctx = get_context()
     books = await run_sync(ctx["registry"].list_books)
 
     result = []
     for book in books:
         has_index = await run_sync(ctx["index_store"].exists, book.id)
-        result.append({
+
+        book_data = {
             "id": book.id,
             "title": book.title,
             "author": book.author,
@@ -95,7 +102,36 @@ async def list_books() -> str:
             "total_pages": book.total_pages,
             "has_index": has_index,
             "ingested_at": book.ingested_at.isoformat(),
-        })
+        }
+
+        # If topic filter provided, check for matches
+        if topic:
+            if not has_index:
+                continue  # Skip books without index when filtering by topic
+
+            index = await run_sync(ctx["index_store"].load, book.id)
+            matched_themes = []
+            matched_topics = []
+            threshold = 70
+
+            for theme in index.book_summary.key_themes:
+                score = fuzz.token_set_ratio(topic.lower(), theme.lower())
+                if score >= threshold:
+                    matched_themes.append(theme)
+
+            for entry in index.chapter_index:
+                for t in entry.key_topics:
+                    score = fuzz.token_set_ratio(topic.lower(), t.lower())
+                    if score >= threshold:
+                        matched_topics.append(f"Ch.{entry.chapter_number}: {t}")
+
+            if not matched_themes and not matched_topics:
+                continue  # No matches, skip this book
+
+            book_data["matched_themes"] = matched_themes
+            book_data["matched_topics"] = matched_topics
+
+        result.append(book_data)
 
     return json.dumps(result, indent=2)
 
@@ -741,7 +777,7 @@ async def _chat_multi_book(
 
 @mcp.tool()
 async def find_book_in_drive(
-    query: str,
+    query: str = "",
     folder_id: Optional[str] = None,
 ) -> str:
     """Search Google Drive for books matching the query.
@@ -750,15 +786,16 @@ async def find_book_in_drive(
     Searches for PDF, EPUB, and Markdown files.
 
     Args:
-        query: Book title or keywords to search for
+        query: Book title or keywords to search for. If empty, lists all books.
         folder_id: Optional Drive folder ID to search in (uses configured default if omitted)
 
     Returns:
-        JSON list of matching files with id, name, mime_type, and match score (0-100).
-        Use the file ID with load_book_from_drive or ingest_book_from_drive.
+        JSON list of matching files with id, name, mime_type, match score,
+        and whether the book is already ingested locally.
 
     Note: Requires Google Drive to be configured. Run 'bookrc setup-drive' first.
     """
+    from rapidfuzz import fuzz
     from book_companion.google_drive import GoogleDriveClient
     from book_companion.google_drive.auth import is_authenticated
 
@@ -769,24 +806,59 @@ async def find_book_in_drive(
             "help": "Run 'bookrc setup-drive' in the CLI to connect Google Drive.",
         })
 
+    ctx = get_context()
+
     try:
         client = GoogleDriveClient()
-        results = await run_sync(client.search_books, query, folder_id)
+
+        # Get files - either search or list all
+        if query:
+            results = await run_sync(client.search_books, query, folder_id)
+        else:
+            # List all books in folder
+            files = await run_sync(client._list_book_files, folder_id)
+            results = [(f, 100) for f in files]  # Score 100 for "list all" mode
+
+        # Get ingested books for comparison
+        ingested_books = await run_sync(ctx["registry"].list_books)
+
+        matches = []
+        for f, score in results:
+            clean_name = client._clean_book_filename(f.name)
+
+            # Check if already ingested
+            best_match_id = None
+            best_match_score = 0
+            for book in ingested_books:
+                match_score = fuzz.token_set_ratio(clean_name.lower(), book.title.lower())
+                if match_score > best_match_score:
+                    best_match_score = match_score
+                    best_match_id = book.id
+
+            is_ingested = best_match_score >= 80
+
+            match_data = {
+                "id": f.id,
+                "name": f.name,
+                "mime_type": f.mime_type,
+                "size_bytes": f.size,
+                "is_ingested": is_ingested,
+            }
+
+            if query:
+                match_data["score"] = score
+
+            if is_ingested:
+                match_data["ingested_book_id"] = best_match_id
+
+            matches.append(match_data)
 
         return json.dumps({
-            "query": query,
-            "matches": [
-                {
-                    "id": f.id,
-                    "name": f.name,
-                    "mime_type": f.mime_type,
-                    "score": score,
-                    "size_bytes": f.size,
-                }
-                for f, score in results
-            ],
-            "help": "Use the file ID with load_book_from_drive (quick context) or ingest_book_from_drive (full ingestion).",
+            "query": query or "(all books)",
+            "matches": matches,
+            "help": "Use ingest_book_from_drive(file_id) for books with is_ingested=false.",
         }, indent=2)
+
     except Exception as e:
         return json.dumps({"error": str(e)})
 

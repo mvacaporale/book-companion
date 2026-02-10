@@ -149,6 +149,21 @@ When a user asks about a book that isn't ingested:
    - **Load to context**: Use `load_book_from_drive(file_id)` for quick Q&A
    - **Full ingest**: Use `ingest_book_from_drive(file_id)` for deeper exploration
 
+### Cloud Run Deployment
+
+For Cloud Run, set these environment variables instead of using files:
+
+| Variable | Purpose | How to Get |
+|----------|---------|------------|
+| `GOOGLE_DRIVE_TOKEN` | OAuth token JSON | Run `cat ~/.bookrc/google_token.json` after local setup |
+| `GOOGLE_DRIVE_FOLDER_ID` | Default folder to search | Your folder ID (already configured: `1QaYnMzEc2JiiWheX5j4wuoaVgi9raHNQ`) |
+
+**Setup steps for Cloud Run:**
+1. Run `bookrc setup-drive` locally to authenticate
+2. Copy the token: `cat ~/.bookrc/google_token.json`
+3. Set as Cloud Run secret: `GOOGLE_DRIVE_TOKEN`
+4. Set folder ID: `GOOGLE_DRIVE_FOLDER_ID=1QaYnMzEc2JiiWheX5j4wuoaVgi9raHNQ`
+
 ## Common Commands
 
 ```bash
@@ -246,14 +261,14 @@ The MCP (Model Context Protocol) server enables Claude Desktop and other MCP cli
 
 | Tool | Description |
 |------|-------------|
-| `list_books` | List all ingested books with metadata |
+| `list_books` | List all ingested books with metadata. Optional `topic` filter for fuzzy matching against themes/topics |
 | `search_books` | Semantic search across books (supports multi-book) |
 | `get_book_index` | Full navigation index with summaries |
 | `get_chapter_summary` | Specific chapter summary and narratives |
 | `get_narratives` | Stories, studies, examples (filterable by type) |
 | `get_stats` | Token usage and cost statistics |
 | `chat` | RAG chat with session support (single or multi-book) |
-| `find_book_in_drive` | Search Google Drive for books (fuzzy matching) |
+| `find_book_in_drive` | Search Google Drive for books (fuzzy matching). Empty query lists all. Shows `is_ingested` status |
 | `load_book_from_drive` | Load book content into context (no persistence) |
 | `ingest_book_from_drive` | Download and fully ingest a book from Drive |
 

@@ -16,6 +16,40 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 DEFAULT_CREDENTIALS_PATH = Path.home() / ".bookrc" / "google_credentials.json"
 DEFAULT_TOKEN_PATH = Path.home() / ".bookrc" / "google_token.json"
 
+# Environment variable names for Cloud Run deployment
+ENV_GOOGLE_DRIVE_TOKEN = "GOOGLE_DRIVE_TOKEN"
+ENV_GOOGLE_DRIVE_FOLDER_ID = "GOOGLE_DRIVE_FOLDER_ID"
+
+
+def _get_credentials_from_env() -> Optional[Credentials]:
+    """
+    Try to load credentials from environment variable.
+
+    For Cloud Run deployment, set GOOGLE_DRIVE_TOKEN to the JSON contents
+    of the token file (from ~/.bookrc/google_token.json after local auth).
+
+    Returns:
+        Credentials if env var is set and valid, None otherwise
+    """
+    token_json = os.environ.get(ENV_GOOGLE_DRIVE_TOKEN)
+    if not token_json:
+        return None
+
+    try:
+        token_data = json.loads(token_json)
+        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+
+        # Refresh if expired
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+
+        if creds and creds.valid:
+            return creds
+    except Exception:
+        pass
+
+    return None
+
 
 def get_credentials(
     credentials_path: Optional[Path] = None,
@@ -24,9 +58,9 @@ def get_credentials(
     """
     Get valid Google API credentials.
 
-    Attempts to load existing credentials from token file.
-    If credentials are expired, attempts to refresh them.
-    Returns None if no valid credentials are available.
+    Checks in order:
+    1. GOOGLE_DRIVE_TOKEN environment variable (for Cloud Run)
+    2. Token file on disk (for local development)
 
     Args:
         credentials_path: Path to OAuth client credentials JSON
@@ -35,6 +69,12 @@ def get_credentials(
     Returns:
         Valid Credentials object, or None if not available
     """
+    # First, try environment variable (Cloud Run)
+    creds = _get_credentials_from_env()
+    if creds:
+        return creds
+
+    # Fall back to file-based credentials (local)
     token_path = token_path or DEFAULT_TOKEN_PATH
     credentials_path = credentials_path or DEFAULT_CREDENTIALS_PATH
 
@@ -188,22 +228,34 @@ def _save_credentials(creds: Credentials, token_path: Path) -> None:
 
 def get_config() -> dict:
     """
-    Load Google Drive configuration from config file.
+    Load Google Drive configuration.
+
+    Checks in order:
+    1. Environment variables (for Cloud Run):
+       - GOOGLE_DRIVE_FOLDER_ID
+    2. Config file on disk (for local development)
 
     Returns:
         Configuration dict with keys like 'default_folder_id', 'cache_ttl_seconds'
     """
+    config = {}
+
+    # Load from config file first
     config_path = Path.home() / ".bookrc" / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                file_config = json.load(f)
+            config = file_config.get("google_drive", {})
+        except Exception:
+            pass
 
-    if not config_path.exists():
-        return {}
+    # Override with environment variables (Cloud Run)
+    folder_id = os.environ.get(ENV_GOOGLE_DRIVE_FOLDER_ID)
+    if folder_id:
+        config["default_folder_id"] = folder_id
 
-    try:
-        with open(config_path) as f:
-            config = json.load(f)
-        return config.get("google_drive", {})
-    except Exception:
-        return {}
+    return config
 
 
 def save_config(drive_config: dict) -> None:
