@@ -15,9 +15,12 @@ Required Endpoints (per MCP Authorization Spec):
 import base64
 import hashlib
 import json
+import logging
 import time
 import urllib.parse
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -156,6 +159,9 @@ async def authorize(request: Request) -> Response:
     code_challenge = request.query_params.get("code_challenge")
     code_challenge_method = request.query_params.get("code_challenge_method")
 
+    logger.info(f"Authorize endpoint called. client_id: {client_id}, redirect_uri: {redirect_uri}")
+    logger.info(f"response_type: {response_type}, scope: {scope}, state: {state[:20] if state else None}...")
+
     # Validate response_type
     if response_type != "code":
         return _error_redirect(
@@ -213,6 +219,7 @@ async def authorize(request: Request) -> Response:
     if state:
         params["state"] = state
     redirect_url = f"{redirect_uri}?{urllib.parse.urlencode(params)}"
+    logger.info(f"Redirecting with auth code to: {redirect_uri} (code: {auth_code.code[:8]}...)")
     return RedirectResponse(redirect_url, status_code=302)
 
 
@@ -253,20 +260,29 @@ async def token(request: Request) -> JSONResponse:
         code_verifier: PKCE verifier (if code_challenge was used)
         refresh_token: Refresh token (for refresh_token grant)
     """
-    # Parse form data or JSON body (Claude may send either)
+    # Log incoming request for debugging
     content_type = request.headers.get("content-type", "")
+    logger.info(f"Token endpoint called. Content-Type: {content_type}")
+    logger.info(f"Headers: {dict(request.headers)}")
+
+    # Parse form data or JSON body (Claude may send either)
     if "application/json" in content_type:
         try:
-            form = await request.json()
-        except json.JSONDecodeError:
+            body = await request.body()
+            logger.info(f"Raw JSON body: {body.decode('utf-8', errors='replace')}")
+            form = json.loads(body)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
             return JSONResponse(
                 {"error": "invalid_request", "error_description": "Invalid JSON body"},
                 status_code=400,
             )
     else:
         form = await request.form()
+        logger.info(f"Form data keys: {list(form.keys())}")
 
     grant_type = form.get("grant_type")
+    logger.info(f"grant_type: {grant_type}")
     client_id = form.get("client_id")
     client_secret = form.get("client_secret")
 
