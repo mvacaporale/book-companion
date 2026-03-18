@@ -80,13 +80,29 @@ class OAuthMiddleware(BaseHTTPMiddleware):
         client_id = validate_bearer_token(auth_header)
 
         if not client_id:
+            # Get the issuer URL for WWW-Authenticate header
+            scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+            host = request.headers.get("host", request.url.netloc)
+            issuer = f"{scheme}://{host}"
+
+            # Return JSON-RPC compatible error with OAuth details
             return JSONResponse(
                 {
-                    "error": "invalid_token",
-                    "error_description": "Missing or invalid access token",
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32001,
+                        "message": "Unauthorized",
+                        "data": {
+                            "error": "invalid_token",
+                            "error_description": "Missing or invalid access token",
+                        }
+                    },
+                    "id": None,
                 },
                 status_code=401,
-                headers={"WWW-Authenticate": 'Bearer realm="mcp"'},
+                headers={
+                    "WWW-Authenticate": f'Bearer resource_metadata="{issuer}/.well-known/oauth-protected-resource"'
+                },
             )
 
         # Add client_id to request state for use in handlers
