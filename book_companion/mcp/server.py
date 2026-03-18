@@ -1084,17 +1084,20 @@ def _add_routes_to_app(app) -> None:
 
     # OpenAPI spec endpoint
     async def openapi_spec(request):
-        # Load OpenAPI spec from docs/openapi.yaml
-        spec_path = Path(__file__).parent.parent.parent / "docs" / "openapi.yaml"
-        if spec_path.exists():
-            with open(spec_path) as f:
-                spec = yaml.safe_load(f)
-            return JSONResponse(spec)
-        else:
-            return JSONResponse(
-                {"error": "OpenAPI spec not found"},
-                status_code=404,
-            )
+        # Try multiple locations for OpenAPI spec
+        possible_paths = [
+            Path(__file__).parent / "static" / "openapi.yaml",  # Package location
+            Path(__file__).parent.parent.parent / "docs" / "openapi.yaml",  # Dev location
+        ]
+        for spec_path in possible_paths:
+            if spec_path.exists():
+                with open(spec_path) as f:
+                    spec = yaml.safe_load(f)
+                return JSONResponse(spec)
+        return JSONResponse(
+            {"error": "OpenAPI spec not found"},
+            status_code=404,
+        )
 
     # Add routes
     app.routes.append(Route("/health", health, methods=["GET"]))
