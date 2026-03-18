@@ -47,11 +47,12 @@ def cli():
 @click.option("--title", "-t", help="Override the book title")
 @click.option("--author", "-a", help="Override the book author")
 @click.option("--force", "-f", is_flag=True, help="Re-ingest even if already exists")
-@click.option("--model", "-m", default="gemini-2.5-flash",
-              help="Model for summarization (e.g., gemini-2.5-flash, gemini-3-flash)")
+@click.option("--model", "-m", default="gemini-3-flash",
+              help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
+@click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step (faster, but no book index)")
 def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
-           model: str, skip_summary: bool):
+           model: str, workers: int, skip_summary: bool):
     """Ingest a book (PDF, EPUB, or Markdown) for chatting.
 
     This command parses the book, chunks the text, generates embeddings,
@@ -176,7 +177,7 @@ def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
                 progress.update(task, completed=step, description=f"{message}{eta_str}")
 
             try:
-                summarizer = Summarizer(model=model)
+                summarizer = Summarizer(model=model, max_workers=workers)
                 book_index = summarizer.process_book(
                     parsed_book=parsed,
                     book_id=temp_id,
@@ -905,11 +906,12 @@ def drive_list(folder_id: Optional[str]):
 @click.argument("file_id")
 @click.option("--title", "-t", help="Override the book title")
 @click.option("--author", "-a", help="Override the book author")
-@click.option("--model", "-m", default="gemini-2.5-flash",
-              help="Model for summarization")
+@click.option("--model", "-m", default="gemini-3-flash",
+              help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
+@click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step")
 def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
-                 model: str, skip_summary: bool):
+                 model: str, workers: int, skip_summary: bool):
     """Download and ingest a book from Google Drive.
 
     FILE_ID is the Google Drive file ID (shown in search/list results).
@@ -928,8 +930,11 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
         console.print(f"[bold]File:[/bold] {metadata.name}")
 
         # Download to persistent location
+        from book_companion.security import sanitize_filename
+
         downloads_dir = Path.home() / ".bookrc" / "downloads"
-        dest_path = downloads_dir / metadata.name
+        safe_filename = sanitize_filename(metadata.name)
+        dest_path = downloads_dir / safe_filename
 
         console.print(f"[dim]Downloading to {dest_path}...[/dim]")
         client.download_file(file_id, dest_path)
@@ -945,6 +950,7 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
             title=title,
             author=author,
             model=model,
+            max_workers=workers,
             skip_summary=skip_summary,
             drive_file_id=file_id,
             console=console,

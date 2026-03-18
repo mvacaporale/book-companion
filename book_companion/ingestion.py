@@ -46,7 +46,8 @@ def ingest_book(
     title: Optional[str] = None,
     author: Optional[str] = None,
     force: bool = False,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3-flash",
+    max_workers: int = 2,
     skip_summary: bool = False,
     drive_file_id: Optional[str] = None,
     console: Optional[Any] = None,
@@ -62,7 +63,8 @@ def ingest_book(
         title: Override the book title
         author: Override the book author
         force: Re-ingest even if book already exists
-        model: Model to use for summarization
+        model: Model to use for summarization (default: claude-sonnet-4)
+        max_workers: Number of parallel workers for chapter summarization (default: 4)
         skip_summary: Skip the summarization step
         drive_file_id: Optional Google Drive file ID for tracking
         console: Optional Rich console for CLI output
@@ -238,7 +240,7 @@ def ingest_book(
                     progress.update(task, completed=step, description=f"{message}{eta_str}")
 
                 try:
-                    summarizer = Summarizer(model=model)
+                    summarizer = Summarizer(model=model, max_workers=max_workers)
                     book_index = summarizer.process_book(
                         parsed_book=parsed,
                         book_id=book_id,
@@ -257,7 +259,7 @@ def ingest_book(
         else:
             # Non-CLI mode
             try:
-                summarizer = Summarizer(model=model)
+                summarizer = Summarizer(model=model, max_workers=max_workers)
 
                 def mcp_summarize_callback(step: int, total: int, message: str):
                     if progress_callback:

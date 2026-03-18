@@ -1,5 +1,3 @@
-# Book Companion - Future Tasks
-
 ## High Priority
 
 ### 1. Improve processing transparency
@@ -25,22 +23,6 @@
   - Total tokens used across all books
   - Estimated cost breakdown by operation
   - Per-book usage statistics
-
-### 3. MCP Server / RAG Connector
-**Problem**: Currently CLI-only. Need to expose as a connector for other tools (Claude Desktop, Obsidian, etc.)
-
-**Requirements**: (needs planning discussion)
-- [ ] Define MCP server interface
-- [ ] Determine which operations to expose:
-  - `search_book(query, book_id)` - Semantic search
-  - `get_chapter_summary(book_id, chapter)` - Get pre-computed summary
-  - `get_book_index(book_id)` - Get navigation index
-  - `list_books()` - Available books
-  - `chat(book_id, message, session_id?)` - Full RAG chat
-- [ ] Consider authentication/security
-- [ ] Plan Obsidian integration approach
-
-**Notes**: This is the big one. Need to discuss architecture and what integrations matter most.
 
 ---
 

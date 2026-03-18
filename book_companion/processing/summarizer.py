@@ -2,8 +2,10 @@
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
+import anthropic
 from google import genai
 from google.genai import types
 from pydantic import ValidationError
@@ -84,29 +86,50 @@ Respond ONLY with valid JSON, no other text."""
 class Summarizer:
     """Generates hierarchical summaries of books using LLMs."""
 
-    DEFAULT_MODEL = "gemini-2.5-flash"
+    DEFAULT_MODEL = "gemini-3-flash"
+
+    # Model provider detection
+    CLAUDE_MODELS = ["claude-sonnet-4-20250514", "claude-sonnet-4", "claude-haiku", "claude-opus"]
+    GEMINI_MODELS = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.0-flash"]
 
     def __init__(
         self,
         model: Optional[str] = None,
         api_key: Optional[str] = None,
+        max_workers: int = 4,
     ):
         """Initialize the summarizer.
 
         Args:
-            model: Model to use for summarization (e.g., "gemini-2.5-flash", "gemini-3-flash").
-                   Defaults to gemini-2.5-flash.
-            api_key: Gemini API key. Defaults to GEMINI_API_KEY env var.
+            model: Model to use for summarization. Defaults to claude-sonnet-4.
+                   Supports: claude-sonnet-4, gemini-2.5-flash, gemini-3-flash
+            api_key: API key. Defaults to ANTHROPIC_API_KEY or GEMINI_API_KEY env var.
+            max_workers: Number of parallel workers for chapter summarization (default: 4)
         """
-        api_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "GEMINI_API_KEY environment variable not set. "
-                "Please set it in ~/.zshrc or pass api_key parameter."
-            )
-
-        self.client = genai.Client(api_key=api_key)
         self.model = model or self.DEFAULT_MODEL
+        self.max_workers = max_workers
+
+        # Determine provider from model name
+        self.provider = "claude" if any(m in self.model for m in ["claude", "sonnet", "haiku", "opus"]) else "gemini"
+
+        if self.provider == "claude":
+            api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY environment variable not set. "
+                    "Please set it in ~/.zshrc or pass api_key parameter."
+                )
+            self.claude_client = anthropic.Anthropic(api_key=api_key)
+            self.gemini_client = None
+        else:
+            api_key = api_key or os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "GEMINI_API_KEY environment variable not set. "
+                    "Please set it in ~/.zshrc or pass api_key parameter."
+                )
+            self.gemini_client = genai.Client(api_key=api_key)
+            self.claude_client = None
 
     @retry(
         stop=stop_after_attempt(3),
@@ -118,16 +141,36 @@ class Summarizer:
         Returns:
             Tuple of (response_text, input_tokens, output_tokens)
         """
-        response = self.client.models.generate_content(
+        if self.provider == "claude":
+            return self._generate_claude(prompt)
+        else:
+            return self._generate_gemini(prompt)
+
+    def _generate_claude(self, prompt: str) -> tuple[str, int, int]:
+        """Generate text using Claude."""
+        response = self.claude_client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        content = response.content[0].text
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+
+        return content, input_tokens, output_tokens
+
+    def _generate_gemini(self, prompt: str) -> tuple[str, int, int]:
+        """Generate text using Gemini."""
+        response = self.gemini_client.models.generate_content(
             model=self.model,
             contents=[prompt],
             config=types.GenerateContentConfig(
-                temperature=0.3,  # Lower temperature for more consistent structure
+                temperature=0.3,
                 response_mime_type="application/json",
             ),
         )
 
-        # Extract token counts from usage metadata
         input_tokens = 0
         output_tokens = 0
         if hasattr(response, "usage_metadata") and response.usage_metadata:
@@ -310,6 +353,8 @@ class Summarizer:
     ) -> BookIndex:
         """Process an entire book and generate the full index.
 
+        Uses parallel processing for chapter summarization when max_workers > 1.
+
         Args:
             parsed_book: The parsed book
             book_id: ID for the book
@@ -319,45 +364,60 @@ class Summarizer:
             Complete BookIndex with summaries, navigation, and token usage
         """
         total_steps = len(parsed_book.chapters) + 1  # chapters + book summary
-        current_step = 0
+        completed_chapters = 0
 
-        chapter_summaries = []
         all_narratives = []
         total_input_tokens = 0
         total_output_tokens = 0
 
-        # Summarize each chapter
-        for chapter in parsed_book.chapters:
-            chapter_title = chapter.title or "Untitled"
-            if progress_callback:
-                progress_callback(
-                    current_step,
-                    total_steps,
-                    f"Chapter {chapter.number}/{len(parsed_book.chapters)}: {chapter_title}",
-                )
+        # Parallel chapter summarization
+        chapter_results: dict[int, ChapterSummary] = {}
 
-            try:
-                summary, input_tokens, output_tokens = self.summarize_chapter(chapter, parsed_book.title)
-                chapter_summaries.append(summary)
-                all_narratives.extend(summary.narratives)
-                total_input_tokens += input_tokens
-                total_output_tokens += output_tokens
-            except Exception as e:
-                # Create a minimal summary on error
-                chapter_summaries.append(
-                    ChapterSummary(
+        if progress_callback:
+            progress_callback(0, total_steps, f"Summarizing {len(parsed_book.chapters)} chapters ({self.max_workers} workers)...")
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all chapter tasks
+            future_to_chapter = {
+                executor.submit(self._summarize_chapter_safe, chapter, parsed_book.title): chapter
+                for chapter in parsed_book.chapters
+            }
+
+            # Process completed futures
+            for future in as_completed(future_to_chapter):
+                chapter = future_to_chapter[future]
+                try:
+                    summary, input_tokens, output_tokens = future.result()
+                    chapter_results[chapter.number] = summary
+                    total_input_tokens += input_tokens
+                    total_output_tokens += output_tokens
+                except Exception as e:
+                    # Create minimal summary on error
+                    chapter_results[chapter.number] = ChapterSummary(
                         chapter_number=chapter.number,
                         chapter_title=chapter.title,
                         summary=f"[Summary generation failed: {e}]",
                         key_concepts=[],
                     )
-                )
 
-            current_step += 1
+                completed_chapters += 1
+                if progress_callback:
+                    progress_callback(
+                        completed_chapters,
+                        total_steps,
+                        f"Chapter {completed_chapters}/{len(parsed_book.chapters)} complete",
+                    )
 
-        # Generate book summary
+        # Sort summaries by chapter number
+        chapter_summaries = [chapter_results[ch.number] for ch in parsed_book.chapters]
+
+        # Collect all narratives
+        for summary in chapter_summaries:
+            all_narratives.extend(summary.narratives)
+
+        # Generate book summary (sequential - needs all chapter summaries)
         if progress_callback:
-            progress_callback(current_step, total_steps, "Generating book summary...")
+            progress_callback(completed_chapters, total_steps, "Generating book summary...")
 
         book_summary, book_input_tokens, book_output_tokens = self.summarize_book(
             title=parsed_book.title,
@@ -385,3 +445,11 @@ class Summarizer:
             total_input_tokens=total_input_tokens,
             total_output_tokens=total_output_tokens,
         )
+
+    def _summarize_chapter_safe(
+        self,
+        chapter: Chapter,
+        book_title: str,
+    ) -> tuple[ChapterSummary, int, int]:
+        """Thread-safe wrapper for summarize_chapter."""
+        return self.summarize_chapter(chapter, book_title)

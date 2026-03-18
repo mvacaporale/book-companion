@@ -156,7 +156,7 @@ For Cloud Run, set these environment variables instead of using files:
 | Variable | Purpose | How to Get |
 |----------|---------|------------|
 | `GOOGLE_DRIVE_TOKEN` | OAuth token JSON | Run `cat ~/.bookrc/google_token.json` after local setup |
-| `GOOGLE_DRIVE_FOLDER_ID` | Default folder to search | Your folder ID (already configured: `1QaYnMzEc2JiiWheX5j4wuoaVgi9raHNQ`) |
+| `GOOGLE_DRIVE_FOLDER_ID` | Default folder to search | Your folder ID (already configured: `1ip13wKCBGznT2S2HSESUseiNciJBMFCm`) |
 
 **Setup steps for Cloud Run:**
 1. Run `bookrc setup-drive` locally to authenticate
@@ -172,9 +172,10 @@ uv sync                              # Install dependencies
 uv run bookrc --help                 # Show CLI help
 uv run pytest                        # Run tests
 
-# Ingestion
-uv run bookrc ingest <path>                          # Full ingest with summaries
-uv run bookrc ingest <path> --model gemini-3-flash   # Use different model
+# Ingestion (uses Gemini 3 Flash with parallel processing by default)
+uv run bookrc ingest <path>                          # Full ingest with summaries (2 workers)
+uv run bookrc ingest <path> -j 4                     # Use 4 parallel workers
+uv run bookrc ingest <path> --model claude-sonnet-4-20250514  # Use Claude instead
 uv run bookrc ingest <path> --skip-summary           # Fast ingest, no summaries
 uv run bookrc ingest <path> --force                  # Re-ingest existing book
 
@@ -237,10 +238,15 @@ Token usage is tracked automatically for all LLM operations:
 - Chat tokens stored per `ChatMessage`
 - View with `bookrc stats` or `bookrc info <book_id>`
 
-**Summarization** (Gemini 2.5 Flash, per book):
-- Input: ~200K tokens → ~$0.015
-- Output: ~26K tokens → ~$0.008
-- **Total: ~$0.02-0.03 per book**
+**Summarization** (Gemini 3 Flash, per book - default):
+- Input: ~200K tokens → ~$0.02
+- Output: ~26K tokens → ~$0.01
+- **Total: ~$0.03 per book** (cheap, use 2 workers to avoid rate limits)
+
+**Summarization** (Claude Sonnet 4, per book - alternative):
+- Input: ~200K tokens → ~$0.60
+- Output: ~26K tokens → ~$0.39
+- **Total: ~$1.00 per book** (higher cost but no rate limiting, can use more workers)
 
 **Chat** (per query):
 - Embedding: ~100 tokens → negligible
@@ -249,8 +255,8 @@ Token usage is tracked automatically for all LLM operations:
 **Model Pricing** (per 1M tokens):
 | Model | Input | Output |
 |-------|-------|--------|
-| gemini-2.5-flash | $0.075 | $0.30 |
 | gemini-3-flash | $0.10 | $0.40 |
+| gemini-2.5-flash | $0.075 | $0.30 |
 | claude-sonnet-4 | $3.00 | $15.00 |
 
 ## MCP Server
@@ -309,3 +315,33 @@ After adding, restart Claude Desktop. The "book-companion" server will appear in
 - Section-level summarization (H2/H3)
 - Multi-book session persistence
 - Google Drive sync detection (check if Drive file has been updated)
+
+## Cloud Run Configuration
+
+**Service:** `book-companion-mcp`
+
+### Required Environment Variables
+
+| Variable | Value/Source |
+|----------|--------------|
+| `GEMINI_API_KEY` | From `~/.zshrc` |
+| `GOOGLE_DRIVE_TOKEN_B64` | `cat ~/.bookrc/google_token.json \| base64` |
+| `GOOGLE_DRIVE_FOLDER_ID` | `1ip13wKCBGznT2S2HSESUseiNciJBMFCm` (Books folder) |
+
+### Deploy Commands
+
+```bash
+# Redeploy with new code
+gcloud run deploy book-companion-mcp --project=general-477905 --region=us-central1 --source=.
+
+# Update env vars only
+gcloud run services update book-companion-mcp --project=general-477905 --region=us-central1 --update-env-vars="KEY=value"
+```
+
+### OAuth Details
+
+- **Client:** "GTD Client" in GCP project `general-477905`
+- **Credentials:** `~/.bookrc/google_credentials.json`
+- **Token:** `~/.bookrc/google_token.json`
+
+See parent `CLAUDE.md` for general Cloud Run and OAuth process notes.

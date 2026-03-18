@@ -908,9 +908,12 @@ async def load_book_from_drive(file_id: str) -> str:
         # Get file metadata
         metadata = await run_sync(client.get_file_metadata, file_id)
 
-        # Download to temp file
+        # Download to temp file (sanitize filename to prevent path traversal)
+        from book_companion.security import sanitize_filename
+
         temp_dir = Path(tempfile.mkdtemp())
-        temp_path = temp_dir / metadata.name
+        safe_filename = sanitize_filename(metadata.name)
+        temp_path = temp_dir / safe_filename
         await run_sync(client.download_file, file_id, temp_path)
 
         # Parse the book
@@ -961,6 +964,7 @@ async def load_book_from_drive(file_id: str) -> str:
 async def ingest_book_from_drive(
     file_id: str,
     skip_summary: bool = False,
+    max_workers: int = 2,
 ) -> str:
     """Download a book from Google Drive and fully ingest it.
 
@@ -968,9 +972,12 @@ async def ingest_book_from_drive(
     optionally summarization. The book will be available for RAG queries
     via search_books and chat tools.
 
+    Uses Gemini 3 Flash for summarization with parallel chapter processing.
+
     Args:
         file_id: Google Drive file ID (from find_book_in_drive results)
         skip_summary: If True, skip summarization (faster but no chapter index)
+        max_workers: Number of parallel workers for summarization (default: 2)
 
     Returns:
         JSON with book_id, title, chunk count, and summary stats.
@@ -978,6 +985,7 @@ async def ingest_book_from_drive(
 
     Note: Ingestion may take a few minutes for large books with summarization.
     """
+    import traceback
     from pathlib import Path
 
     from book_companion.google_drive import GoogleDriveClient
@@ -998,17 +1006,21 @@ async def ingest_book_from_drive(
         metadata = await run_sync(client.get_file_metadata, file_id)
 
         # Download to persistent location
+        from book_companion.security import sanitize_filename
+
         downloads_dir = Path.home() / ".bookrc" / "downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
-        dest_path = downloads_dir / metadata.name
+        safe_filename = sanitize_filename(metadata.name)
+        dest_path = downloads_dir / safe_filename
 
         await run_sync(client.download_file, file_id, dest_path)
 
-        # Run ingestion
+        # Run ingestion (uses Gemini 3 Flash with parallel processing by default)
         result = await run_sync(
             ingest_book,
             path=dest_path,
             skip_summary=skip_summary,
+            max_workers=max_workers,
             drive_file_id=file_id,
         )
 
@@ -1019,27 +1031,91 @@ async def ingest_book_from_drive(
                 "help": "Use list_books to find the existing book ID.",
             })
 
+        # Ensure all values are JSON-serializable
         return json.dumps({
             "success": True,
-            "book_id": result["book_id"],
-            "title": result["title"],
-            "author": result["author"],
-            "format": result["format"],
-            "chapters": result["chapters"],
-            "chunks": result["chunks"],
-            "narratives": result["narratives"],
-            "has_index": result["has_index"],
-            "tokens_used": result["tokens_used"],
-            "help": f"Use book_id '{result['book_id']}' with search_books or chat.",
+            "book_id": str(result.get("book_id", "")),
+            "title": str(result.get("title", "")),
+            "author": str(result.get("author", "") or ""),
+            "format": str(result.get("format", "")),
+            "chapters": int(result.get("chapters", 0)),
+            "chunks": int(result.get("chunks", 0)),
+            "narratives": int(result.get("narratives", 0)),
+            "has_index": bool(result.get("has_index", False)),
+            "tokens_used": int(result.get("tokens_used", 0)),
+            "help": f"Use book_id '{result.get('book_id', '')}' with search_books or chat.",
         }, indent=2)
 
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        # Log the full traceback for debugging (always log server-side)
+        tb = traceback.format_exc()
+        print(f"Ingestion error: {e}\n{tb}")
+
+        # Only expose traceback in debug mode
+        import os
+
+        error_response = {"error": str(e)}
+        if os.environ.get("MCP_DEBUG", "").lower() in ("true", "1", "yes"):
+            error_response["traceback"] = tb
+
+        return json.dumps(error_response)
 
 
 # =============================================================================
 # Main entry point
 # =============================================================================
+
+
+def _add_routes_to_app(app) -> None:
+    """Add OAuth and utility routes to a Starlette app."""
+    import os
+    from pathlib import Path
+
+    import yaml
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from book_companion.auth.config import get_oauth_config
+    from book_companion.auth.server import create_oauth_routes
+
+    # Health check endpoint for Cloud Run
+    async def health(request):
+        return JSONResponse({"status": "healthy"})
+
+    # OpenAPI spec endpoint
+    async def openapi_spec(request):
+        # Load OpenAPI spec from docs/openapi.yaml
+        spec_path = Path(__file__).parent.parent.parent / "docs" / "openapi.yaml"
+        if spec_path.exists():
+            with open(spec_path) as f:
+                spec = yaml.safe_load(f)
+            return JSONResponse(spec)
+        else:
+            return JSONResponse(
+                {"error": "OpenAPI spec not found"},
+                status_code=404,
+            )
+
+    # Add routes
+    app.routes.append(Route("/health", health, methods=["GET"]))
+    app.routes.append(Route("/openapi.json", openapi_spec, methods=["GET"]))
+
+    # Add OAuth routes if enabled
+    config = get_oauth_config()
+    if config.enabled:
+        for route in create_oauth_routes():
+            app.routes.append(route)
+        print("OAuth 2.1 authentication enabled")
+
+
+def _add_oauth_middleware(app) -> None:
+    """Add OAuth middleware to a Starlette app if enabled."""
+    from book_companion.auth.config import get_oauth_config
+    from book_companion.auth.middleware import OAuthMiddleware
+
+    config = get_oauth_config()
+    if config.enabled:
+        app.add_middleware(OAuthMiddleware)
 
 
 def main():
@@ -1050,7 +1126,12 @@ def main():
     - sse: For remote access via HTTP/SSE (Claude web, tunnels, Cloud Run)
     - http: For remote access via Streamable HTTP
 
-    All HTTP modes also include a REST API at /api/* for Obsidian plugin support.
+    All HTTP modes also include OAuth 2.1 endpoints when MCP_OAUTH_ENABLED=true:
+    - /.well-known/oauth-authorization-server: Metadata discovery
+    - /register: Dynamic client registration
+    - /authorize: Authorization endpoint
+    - /token: Token endpoint
+    - /health: Health check endpoint
 
     Usage:
         python -m book_companion.mcp.server          # stdio (default)
@@ -1059,6 +1140,7 @@ def main():
 
     Environment:
         PORT: Override default port (used by Cloud Run)
+        MCP_OAUTH_ENABLED: Enable OAuth 2.1 authentication (default: false)
     """
     import os
     import sys
@@ -1076,11 +1158,16 @@ def main():
 
         print(f"Starting MCP server with SSE transport on http://0.0.0.0:{port}/sse")
         app = mcp.sse_app()
+
+        # Add OAuth middleware and routes
+        _add_routes_to_app(app)
+        _add_oauth_middleware(app)
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["app://obsidian.md"],
             allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type"],
+            allow_headers=["Content-Type", "Authorization"],
         )
         uvicorn.run(app, host="0.0.0.0", port=port)
     elif transport == "http":
@@ -1089,11 +1176,16 @@ def main():
 
         print(f"Starting MCP server with HTTP transport on http://0.0.0.0:{port}/mcp")
         app = mcp.streamable_http_app()
+
+        # Add OAuth middleware and routes
+        _add_routes_to_app(app)
+        _add_oauth_middleware(app)
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["app://obsidian.md"],
             allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type"],
+            allow_headers=["Content-Type", "Authorization"],
         )
         uvicorn.run(app, host="0.0.0.0", port=port)
     else:

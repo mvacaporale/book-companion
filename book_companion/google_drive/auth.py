@@ -241,10 +241,12 @@ def is_authenticated(
 
 
 def _save_credentials(creds: Credentials, token_path: Path) -> None:
-    """Save credentials to token file."""
+    """Save credentials to token file with secure permissions."""
     token_path.parent.mkdir(parents=True, exist_ok=True)
     with open(token_path, "w") as f:
         f.write(creds.to_json())
+    # Set restrictive permissions (owner read/write only)
+    os.chmod(token_path, 0o600)
 
 
 def get_config() -> dict:
