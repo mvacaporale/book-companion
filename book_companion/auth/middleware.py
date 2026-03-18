@@ -13,6 +13,7 @@ from book_companion.auth.store import get_oauth_store
 # Paths that don't require authentication
 PUBLIC_PATHS = {
     "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource",
     "/register",
     "/authorize",
     "/token",
