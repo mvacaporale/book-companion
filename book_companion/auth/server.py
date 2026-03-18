@@ -12,6 +12,7 @@ Required Endpoints (per MCP Authorization Spec):
 - /register: Dynamic client registration
 """
 
+import base64
 import hashlib
 import json
 import time
@@ -243,7 +244,7 @@ async def token(request: Request) -> JSONResponse:
     - authorization_code: Exchange auth code for access token
     - refresh_token: Refresh an expired access token
 
-    Form Parameters:
+    Form Parameters (or JSON body):
         grant_type: "authorization_code" or "refresh_token"
         code: Authorization code (for authorization_code grant)
         redirect_uri: Must match original request (for authorization_code grant)
@@ -252,11 +253,35 @@ async def token(request: Request) -> JSONResponse:
         code_verifier: PKCE verifier (if code_challenge was used)
         refresh_token: Refresh token (for refresh_token grant)
     """
-    # Parse form data
-    form = await request.form()
+    # Parse form data or JSON body (Claude may send either)
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            form = await request.json()
+        except json.JSONDecodeError:
+            return JSONResponse(
+                {"error": "invalid_request", "error_description": "Invalid JSON body"},
+                status_code=400,
+            )
+    else:
+        form = await request.form()
+
     grant_type = form.get("grant_type")
     client_id = form.get("client_id")
     client_secret = form.get("client_secret")
+
+    # Also check Authorization header for Basic auth (client_secret_basic)
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Basic ") and (not client_id or not client_secret):
+        import base64
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+            if ":" in decoded:
+                header_client_id, header_client_secret = decoded.split(":", 1)
+                client_id = client_id or header_client_id
+                client_secret = client_secret or header_client_secret
+        except Exception:
+            pass  # Fall through to invalid_client error
 
     # Validate client
     store = get_oauth_store()
@@ -331,8 +356,6 @@ async def _handle_authorization_code(
             )
         # Verify S256 challenge
         verifier_hash = hashlib.sha256(code_verifier.encode()).digest()
-        import base64
-
         expected = base64.urlsafe_b64encode(verifier_hash).rstrip(b"=").decode()
         if expected != auth_code.code_challenge:
             return JSONResponse(
