@@ -73,6 +73,25 @@ async def oauth_metadata(request: Request) -> JSONResponse:
     return JSONResponse(metadata)
 
 
+async def protected_resource_metadata(request: Request) -> JSONResponse:
+    """OAuth 2.0 Protected Resource Metadata (RFC 9728 / MCP spec).
+
+    Endpoint: /.well-known/oauth-protected-resource
+
+    This tells clients where to find the authorization server for this resource.
+    """
+    issuer = get_issuer(request)
+
+    metadata = {
+        "resource": f"{issuer}/mcp",
+        "authorization_servers": [issuer],
+        "scopes_supported": ["mcp"],
+        "bearer_methods_supported": ["header"],
+    }
+
+    return JSONResponse(metadata)
+
+
 async def register_client(request: Request) -> JSONResponse:
     """Dynamic Client Registration (RFC 7591).
 
@@ -462,6 +481,7 @@ def create_oauth_routes() -> list[Route]:
     """Create OAuth endpoint routes for the MCP server."""
     return [
         Route("/.well-known/oauth-authorization-server", oauth_metadata, methods=["GET"]),
+        Route("/.well-known/oauth-protected-resource", protected_resource_metadata, methods=["GET"]),
         Route("/register", register_client, methods=["POST"]),
         Route("/authorize", authorize, methods=["GET"]),
         Route("/token", token, methods=["POST"]),
