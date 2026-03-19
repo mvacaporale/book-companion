@@ -27,8 +27,9 @@ info:
     name: MIT
 
 servers:
-  - url: https://book-companion-mcp-xxx.run.app
-    description: Cloud Run deployment
+  # Replace with your actual Cloud Run service URL
+  - url: https://your-cloud-run-url.run.app
+    description: Cloud Run deployment (replace with your service URL)
   - url: http://localhost:8765
     description: Local development
 

@@ -50,61 +50,61 @@ Reload your shell or run `source ~/.zshrc`.
 
 ```bash
 # Ingest a PDF (includes summarization)
-bookrc ingest ~/Books/my-book.pdf
+uv run bookrc ingest ~/Books/my-book.pdf
 
 # Use a different model for summarization
-bookrc ingest ~/Books/book.pdf --model gemini-3-flash
+uv run bookrc ingest ~/Books/book.pdf --model gemini-3-flash
 
 # Skip summarization for faster ingestion
-bookrc ingest ~/Books/book.pdf --skip-summary
+uv run bookrc ingest ~/Books/book.pdf --skip-summary
 
 # Ingest with custom title/author
-bookrc ingest ~/Books/book.epub --title "Custom Title" --author "Author Name"
+uv run bookrc ingest ~/Books/book.epub --title "Custom Title" --author "Author Name"
 
 # Re-ingest an existing book
-bookrc ingest ~/Books/book.pdf --force
+uv run bookrc ingest ~/Books/book.pdf --force
 ```
 
 ### Chat with a Book
 
 ```bash
 # Start a new chat session (uses Gemini by default)
-bookrc chat abc123
+uv run bookrc chat abc123
 
 # Use Claude instead
-bookrc chat abc123 --provider claude
+uv run bookrc chat abc123 --provider claude
 
 # Resume a previous session
-bookrc chat abc123 --resume session_id
+uv run bookrc chat abc123 --resume session_id
 ```
 
 ### Manage Books and Sessions
 
 ```bash
 # List all ingested books (shows index status)
-bookrc list books
+uv run bookrc list books
 
 # List sessions for a book
-bookrc list sessions abc123
+uv run bookrc list sessions abc123
 
 # Show book details and extracted stories/studies
-bookrc info abc123
+uv run bookrc info abc123
 
 # View the navigation index (debugging)
-bookrc index abc123
+uv run bookrc index abc123
 
 # Delete a book and all its data
-bookrc delete abc123
+uv run bookrc delete abc123
 ```
 
 ### Token Usage & Cost Tracking
 
 ```bash
 # Show token usage for all books
-bookrc stats
+uv run bookrc stats
 
 # Show token usage for a specific book
-bookrc stats abc123
+uv run bookrc stats abc123
 ```
 
 The `stats` command shows:
@@ -198,7 +198,7 @@ source ~/.zshrc
 
 ### "Book not found"
 
-Run `bookrc list books` to see available book IDs.
+Run `uv run bookrc list books` to see available book IDs.
 
 ### Slow ingestion
 

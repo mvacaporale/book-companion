@@ -130,6 +130,10 @@ The navigation index is included in the system prompt, giving the LLM a "map" of
 | `ANTHROPIC_API_KEY` | Required for Claude chat |
 | `BOOKRC_DB_PATH` | Custom data directory (default: ~/.bookrc/) |
 
+**Default Models:**
+- Summarization: `gemini-3-flash` (faster, configurable via `--model`)
+- Chat: `gemini-2.5-flash` (better quality, configurable via `--provider`)
+
 ## Google Drive Integration
 
 Allows searching and ingesting books directly from Google Drive.
@@ -172,7 +176,7 @@ For Cloud Run, set these environment variables instead of using files:
 1. Run `bookrc setup-drive` locally to authenticate
 2. Copy the token: `cat ~/.bookrc/google_token.json`
 3. Set as Cloud Run secret: `GOOGLE_DRIVE_TOKEN`
-4. Set folder ID: `GOOGLE_DRIVE_FOLDER_ID=1QaYnMzEc2JiiWheX5j4wuoaVgi9raHNQ`
+4. Set folder ID: `GOOGLE_DRIVE_FOLDER_ID=1ip13wKCBGznT2S2HSESUseiNciJBMFCm`
 
 ## Common Commands
 
@@ -319,8 +323,9 @@ After adding, restart Claude Desktop. The "book-companion" server will appear in
 
 ### Claude.ai Web Interface
 
-Connect directly to the Cloud Run deployment:
-- **URL:** `https://book-companion-mcp-zpgj4t2a3a-uc.a.run.app/mcp`
+Connect directly to your Cloud Run deployment:
+- **URL:** `https://<your-service-url>.run.app/mcp`
+- Get the URL with: `gcloud run services describe book-companion-mcp --region=us-central1 --format='value(status.url)'`
 
 ### OAuth Authentication (Disabled - Future Feature)
 

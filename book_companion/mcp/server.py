@@ -5,8 +5,11 @@ Provides tools for searching books, accessing summaries, and RAG chat.
 
 import asyncio
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -1049,7 +1052,7 @@ async def ingest_book_from_drive(
     except Exception as e:
         # Log the full traceback for debugging (always log server-side)
         tb = traceback.format_exc()
-        print(f"Ingestion error: {e}\n{tb}")
+        logger.error("Ingestion error: %s\n%s", e, tb)
 
         # Only expose traceback in debug mode
         import os
@@ -1108,7 +1111,7 @@ def _add_routes_to_app(app) -> None:
     if config.enabled:
         for route in create_oauth_routes():
             app.routes.append(route)
-        print("OAuth 2.1 authentication enabled")
+        logger.info("OAuth 2.1 authentication enabled")
 
 
 def _add_oauth_middleware(app) -> None:
@@ -1159,7 +1162,7 @@ def main():
         import uvicorn
         from starlette.middleware.cors import CORSMiddleware
 
-        print(f"Starting MCP server with SSE transport on http://0.0.0.0:{port}/sse")
+        logger.info("Starting MCP server with SSE transport on http://0.0.0.0:%d/sse", port)
         app = mcp.sse_app()
 
         # Add OAuth middleware and routes
@@ -1177,7 +1180,7 @@ def main():
         import uvicorn
         from starlette.middleware.cors import CORSMiddleware
 
-        print(f"Starting MCP server with HTTP transport on http://0.0.0.0:{port}/mcp")
+        logger.info("Starting MCP server with HTTP transport on http://0.0.0.0:%d/mcp", port)
         app = mcp.streamable_http_app()
 
         # Add OAuth middleware and routes
