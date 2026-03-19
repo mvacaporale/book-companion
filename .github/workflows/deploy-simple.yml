@@ -69,7 +69,6 @@ jobs:
             --set-env-vars "GOOGLE_DRIVE_TOKEN_B64=${DRIVE_TOKEN_B64}" \
             --set-env-vars "GOOGLE_DRIVE_FOLDER_ID=${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
             --set-env-vars "BOOKRC_DB_PATH=/data/bookrc" \
-            --set-env-vars "MCP_OAUTH_ENABLED=true" \
             --execution-environment gen2 \
             --add-volume "name=bookrc-data,type=cloud-storage,bucket=${{ env.BUCKET_NAME }}" \
             --add-volume-mount "volume=bookrc-data,mount-path=/data/bookrc"

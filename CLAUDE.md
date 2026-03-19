@@ -36,6 +36,16 @@ book_companion/
 │   ├── __init__.py
 │   ├── auth.py            # OAuth flow and token management
 │   └── client.py          # GoogleDriveClient API wrapper
+├── auth/                  # OAuth 2.1 for MCP server (disabled)
+│   ├── __init__.py
+│   ├── config.py          # OAuth configuration
+│   ├── models.py          # Token, AuthCode, Client models
+│   ├── store.py           # File-based token storage
+│   ├── server.py          # OAuth endpoint handlers
+│   └── middleware.py      # Starlette auth middleware
+├── security/              # Security utilities
+│   ├── __init__.py
+│   └── sanitize.py        # Filename sanitization
 ├── mcp/                   # MCP Server for Claude Desktop
 │   ├── __init__.py
 │   └── server.py          # FastMCP server with all tools
@@ -306,6 +316,40 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 After adding, restart Claude Desktop. The "book-companion" server will appear in connectors.
+
+### Claude.ai Web Interface
+
+Connect directly to the Cloud Run deployment:
+- **URL:** `https://book-companion-mcp-zpgj4t2a3a-uc.a.run.app/mcp`
+
+### OAuth Authentication (Disabled - Future Feature)
+
+OAuth 2.1 authentication is fully implemented but currently **disabled** due to bugs in Claude.ai's web interface OAuth handling ([Issue #11814](https://github.com/anthropics/claude-code/issues/11814)).
+
+**To enable OAuth** (when Claude.ai fixes their implementation):
+
+1. Set environment variable: `MCP_OAUTH_ENABLED=true`
+2. Add to deploy workflow in `.github/workflows/deploy-simple.yml`:
+   ```yaml
+   --set-env-vars "MCP_OAUTH_ENABLED=true" \
+   ```
+
+**OAuth Implementation Details:**
+- Location: `book_companion/auth/`
+- Endpoints: `/.well-known/oauth-authorization-server`, `/register`, `/authorize`, `/token`
+- Implements OAuth 2.1 with PKCE support
+- Dynamic client registration (RFC 7591)
+- Uses Google Drive credentials as the authentication source
+- Tokens stored in `~/.bookrc/oauth_tokens.json` (local) or GCS bucket (Cloud Run)
+
+**OAuth works correctly with:**
+- Claude Code CLI: `claude mcp add --transport http book-companion <url>`
+- MCP Inspector
+- Manual curl testing
+
+**Known issues with Claude.ai web:**
+- OAuth flow doesn't complete ([#11814](https://github.com/anthropics/claude-code/issues/11814))
+- Ignores external auth server endpoints ([#82](https://github.com/anthropics/claude-ai-mcp/issues/82))
 
 ## Future Work
 
