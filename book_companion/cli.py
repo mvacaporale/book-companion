@@ -47,7 +47,7 @@ def cli():
 @click.option("--title", "-t", help="Override the book title")
 @click.option("--author", "-a", help="Override the book author")
 @click.option("--force", "-f", is_flag=True, help="Re-ingest even if already exists")
-@click.option("--model", "-m", default="gemini-3-flash",
+@click.option("--model", "-m", default="gemini-2.5-flash",
               help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
 @click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step (faster, but no book index)")
@@ -906,7 +906,7 @@ def drive_list(folder_id: Optional[str]):
 @click.argument("file_id")
 @click.option("--title", "-t", help="Override the book title")
 @click.option("--author", "-a", help="Override the book author")
-@click.option("--model", "-m", default="gemini-3-flash",
+@click.option("--model", "-m", default="gemini-2.5-flash",
               help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
 @click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step")

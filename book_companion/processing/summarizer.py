@@ -86,11 +86,11 @@ Respond ONLY with valid JSON, no other text."""
 class Summarizer:
     """Generates hierarchical summaries of books using LLMs."""
 
-    DEFAULT_MODEL = "gemini-3-flash"
+    DEFAULT_MODEL = "gemini-2.5-flash"
 
     # Model provider detection
     CLAUDE_MODELS = ["claude-sonnet-4-20250514", "claude-sonnet-4", "claude-haiku", "claude-opus"]
-    GEMINI_MODELS = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.0-flash"]
+    GEMINI_MODELS = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.0-flash"]
 
     def __init__(
         self,
@@ -102,7 +102,7 @@ class Summarizer:
 
         Args:
             model: Model to use for summarization. Defaults to claude-sonnet-4.
-                   Supports: claude-sonnet-4, gemini-2.5-flash, gemini-3-flash
+                   Supports: claude-sonnet-4, gemini-2.5-flash, gemini-3-flash-preview
             api_key: API key. Defaults to ANTHROPIC_API_KEY or GEMINI_API_KEY env var.
             max_workers: Number of parallel workers for chapter summarization (default: 4)
         """

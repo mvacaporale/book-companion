@@ -5,6 +5,7 @@ by both the CLI and MCP server.
 """
 
 import hashlib
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +14,13 @@ from typing import Callable, Optional, Any
 from book_companion.models import Book, generate_id
 from book_companion.parsers import get_parser
 from book_companion.processing import Chunker, EmbeddingClient, Summarizer
-from book_companion.storage import VectorStore, BookRegistryStore, BookIndexStore
+from book_companion.storage import (
+    get_vector_store,
+    get_book_registry_store,
+    get_book_index_store,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -46,7 +53,7 @@ def ingest_book(
     title: Optional[str] = None,
     author: Optional[str] = None,
     force: bool = False,
-    model: str = "gemini-3-flash",
+    model: str = "gemini-2.5-flash",
     max_workers: int = 2,
     skip_summary: bool = False,
     drive_file_id: Optional[str] = None,
@@ -91,7 +98,7 @@ def ingest_book(
         raise ValueError(f"Unsupported file format: {path.suffix}")
 
     # Check for duplicates
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     file_hash = get_file_hash(path)
 
     existing = registry.find_by_hash(file_hash)
@@ -145,19 +152,35 @@ def ingest_book(
 
             # Store in vector database
             progress.update(task, description="Storing in database...")
-            vector_store = VectorStore()
+            vector_store = get_vector_store()
 
             # Delete existing if re-ingesting
             if existing:
                 vector_store.delete_book(existing.id)
                 registry.remove_book(existing.id)
-                index_store = BookIndexStore()
+                index_store = get_book_index_store()
                 index_store.delete(existing.id)
+
+            # Create preliminary book record BEFORE adding chunks (required for PostgreSQL foreign keys)
+            preliminary_book = Book(
+                id=book_id,
+                title=parsed.title,
+                author=parsed.author,
+                format=parsed.format,
+                file_path=str(path),
+                file_hash=file_hash,
+                total_chunks=len(chunks),
+                total_pages=parsed.total_pages,
+                summarization_input_tokens=0,
+                summarization_output_tokens=0,
+            )
+            registry.add_book(preliminary_book)
 
             vector_store.add_chunks(book_id, chunks)
             progress.update(task, completed=True, description="Vectors stored")
     else:
         # Non-CLI mode (for MCP)
+        logger.info("Parsing book: %s", path)
         parsed = parser.parse(path)
 
         if title:
@@ -165,34 +188,60 @@ def ingest_book(
         if author:
             parsed.author = author
 
+        logger.info("Parsed: %s (%d chapters)", parsed.title, len(parsed.chapters))
         if progress_callback:
             progress_callback(f"Parsed: {parsed.title}", 1, 5)
 
         # Chunk the book
+        logger.info("Chunking text...")
         chunker = Chunker()
         chunks = chunker.chunk_book(parsed, book_id)
+        logger.info("Created %d chunks", len(chunks))
 
         if progress_callback:
             progress_callback(f"Created {len(chunks)} chunks", 2, 5)
 
         # Generate embeddings
+        logger.info("Generating embeddings...")
         embedding_client = EmbeddingClient()
         chunks = embedding_client.embed_chunks(chunks)
+        logger.info("Embeddings generated for %d chunks", len(chunks))
 
         if progress_callback:
             progress_callback("Embeddings generated", 3, 5)
 
         # Store in vector database
-        vector_store = VectorStore()
+        logger.info("Storing vectors in database...")
+        vector_store = get_vector_store()
 
         # Delete existing if re-ingesting
         if existing:
+            logger.info("Re-ingesting: deleting existing data for book %s", existing.id)
             vector_store.delete_book(existing.id)
             registry.remove_book(existing.id)
-            index_store = BookIndexStore()
+            index_store = get_book_index_store()
             index_store.delete(existing.id)
 
+        # Create preliminary book record BEFORE adding chunks (required for PostgreSQL foreign keys)
+        # This will be updated later with summarization token counts
+        logger.info("Creating book record...")
+        preliminary_book = Book(
+            id=book_id,
+            title=parsed.title,
+            author=parsed.author,
+            format=parsed.format,
+            file_path=str(path),
+            file_hash=file_hash,
+            total_chunks=len(chunks),
+            total_pages=parsed.total_pages,
+            summarization_input_tokens=0,
+            summarization_output_tokens=0,
+        )
+        registry.add_book(preliminary_book)
+        logger.info("Book record created: %s", book_id)
+
         vector_store.add_chunks(book_id, chunks)
+        logger.info("Vectors stored successfully")
 
         if progress_callback:
             progress_callback("Vectors stored", 4, 5)
@@ -247,7 +296,7 @@ def ingest_book(
                         progress_callback=cli_progress_callback,
                     )
 
-                    index_store = BookIndexStore()
+                    index_store = get_book_index_store()
                     index_store.save(book_index)
 
                     elapsed = time.time() - start_time
@@ -272,7 +321,7 @@ def ingest_book(
                     progress_callback=mcp_summarize_callback,
                 )
 
-                index_store = BookIndexStore()
+                index_store = get_book_index_store()
                 index_store.save(book_index)
             except Exception:
                 pass  # Silently continue without summaries in MCP mode
@@ -280,7 +329,7 @@ def ingest_book(
     if progress_callback:
         progress_callback("Complete", 5, 5)
 
-    # Create book record
+    # Update book record with summarization tokens (book was created earlier before chunks)
     summarization_input = book_index.total_input_tokens if book_index else 0
     summarization_output = book_index.total_output_tokens if book_index else 0
 
@@ -297,6 +346,7 @@ def ingest_book(
         summarization_output_tokens=summarization_output,
     )
 
+    # Update the book record with summarization tokens (uses upsert)
     registry.add_book(book)
 
     # Build result

@@ -15,6 +15,8 @@ dependencies = [
     # Vector DB & Embeddings
     "chromadb>=0.4.0",
     "google-genai>=1.47.0",
+    # PostgreSQL with pgvector (Cloud SQL backend)
+    "psycopg2-binary>=2.9.0",
     # LLM
     "anthropic>=0.43.0",
     # Utils

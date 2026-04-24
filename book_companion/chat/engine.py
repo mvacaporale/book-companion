@@ -4,7 +4,7 @@ from typing import Generator, Optional
 
 from book_companion.models import Book, BookIndex, ChatRole, RetrievedContext, Session
 from book_companion.processing import EmbeddingClient
-from book_companion.storage import VectorStore
+from book_companion.storage import VectorStore, get_vector_store
 from book_companion.llm import LLMClient, LLMResponse, get_llm_client
 
 from .prompts import build_system_prompt, build_context_prompt
@@ -43,7 +43,7 @@ class ChatEngine:
         self.n_context_chunks = n_context_chunks
 
         # Initialize components
-        self.vector_store = vector_store or VectorStore()
+        self.vector_store = vector_store or get_vector_store()
         self.embedding_client = embedding_client or EmbeddingClient()
         self.llm_client = llm_client or get_llm_client(provider)
         self.session_manager = session_manager or SessionManager()

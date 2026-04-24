@@ -46,18 +46,22 @@ def get_context() -> dict:
     global _ctx
     if _ctx is None:
         from book_companion.storage import (
-            BookRegistryStore,
-            BookIndexStore,
-            SessionStore,
-            VectorStore,
+            get_book_registry_store,
+            get_book_index_store,
+            get_session_store,
+            get_vector_store,
+            init_storage,
         )
         from book_companion.processing import EmbeddingClient
 
+        # Initialize storage (creates tables for PostgreSQL, directories for file-based)
+        init_storage()
+
         _ctx = {
-            "registry": BookRegistryStore(),
-            "index_store": BookIndexStore(),
-            "session_store": SessionStore(),
-            "vector_store": VectorStore(),
+            "registry": get_book_registry_store(),
+            "index_store": get_book_index_store(),
+            "session_store": get_session_store(),
+            "vector_store": get_vector_store(),
             "embedding_client": EmbeddingClient(),
         }
     return _ctx
@@ -916,6 +920,21 @@ async def load_book_from_drive(file_id: str) -> str:
 
         temp_dir = Path(tempfile.mkdtemp())
         safe_filename = sanitize_filename(metadata.name)
+
+        # Ensure file has a recognized extension (Drive files may not have one)
+        mime_to_ext = {
+            "application/pdf": ".pdf",
+            "application/epub+zip": ".epub",
+            "text/markdown": ".md",
+            "text/plain": ".md",
+        }
+        fname_path = Path(safe_filename)
+        recognized_extensions = {".pdf", ".epub", ".md", ".txt", ".markdown"}
+        if fname_path.suffix.lower() not in recognized_extensions:
+            ext = mime_to_ext.get(metadata.mime_type)
+            if ext:
+                safe_filename = safe_filename + ext
+
         temp_path = temp_dir / safe_filename
         await run_sync(client.download_file, file_id, temp_path)
 
@@ -925,6 +944,8 @@ async def load_book_from_drive(file_id: str) -> str:
             return json.dumps({
                 "error": f"Unsupported file format: {temp_path.suffix}",
                 "file_name": metadata.name,
+                "mime_type": metadata.mime_type,
+                "hint": "Ensure the file has a .pdf, .epub, or .md extension, or is a recognized mime type.",
             })
 
         parsed = await run_sync(parser.parse, temp_path)
@@ -967,6 +988,7 @@ async def load_book_from_drive(file_id: str) -> str:
 async def ingest_book_from_drive(
     file_id: str,
     skip_summary: bool = False,
+    force: bool = False,
     max_workers: int = 2,
 ) -> str:
     """Download a book from Google Drive and fully ingest it.
@@ -975,11 +997,13 @@ async def ingest_book_from_drive(
     optionally summarization. The book will be available for RAG queries
     via search_books and chat tools.
 
-    Uses Gemini 3 Flash for summarization with parallel chapter processing.
+    Uses Gemini 2.5 Flash for summarization with parallel chapter processing.
 
     Args:
         file_id: Google Drive file ID (from find_book_in_drive results)
         skip_summary: If True, skip summarization (faster but no chapter index)
+        force: If True, re-ingest even if the book already exists (useful for
+               regenerating summaries or updating after model fixes)
         max_workers: Number of parallel workers for summarization (default: 2)
 
     Returns:
@@ -995,8 +1019,11 @@ async def ingest_book_from_drive(
     from book_companion.google_drive.auth import is_authenticated
     from book_companion.ingestion import ingest_book
 
+    logger.info("Starting ingest_book_from_drive for file_id=%s, skip_summary=%s", file_id, skip_summary)
+
     # Check authentication
     if not is_authenticated():
+        logger.warning("Google Drive not authenticated")
         return json.dumps({
             "error": "Google Drive not configured",
             "help": "Run 'bookrc setup-drive' in the CLI to connect Google Drive.",
@@ -1006,7 +1033,9 @@ async def ingest_book_from_drive(
         client = GoogleDriveClient()
 
         # Get file metadata
+        logger.info("Fetching file metadata from Google Drive...")
         metadata = await run_sync(client.get_file_metadata, file_id)
+        logger.info("Got metadata: name=%s, size=%s bytes", metadata.name, metadata.size)
 
         # Download to persistent location
         from book_companion.security import sanitize_filename
@@ -1014,18 +1043,43 @@ async def ingest_book_from_drive(
         downloads_dir = Path.home() / ".bookrc" / "downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
         safe_filename = sanitize_filename(metadata.name)
+
+        # Ensure file has a recognized extension (Drive files may not have one)
+        # Map mime types to extensions for supported formats
+        mime_to_ext = {
+            "application/pdf": ".pdf",
+            "application/epub+zip": ".epub",
+            "text/markdown": ".md",
+            "text/plain": ".md",
+        }
+        temp_path = Path(safe_filename)
+        recognized_extensions = {".pdf", ".epub", ".md", ".txt", ".markdown"}
+        if temp_path.suffix.lower() not in recognized_extensions:
+            # No recognized extension - try to add one based on mime_type
+            ext = mime_to_ext.get(metadata.mime_type)
+            if ext:
+                safe_filename = safe_filename + ext
+                logger.info("Added extension %s based on mime_type %s", ext, metadata.mime_type)
+            else:
+                logger.warning("Unknown mime_type %s for file without extension", metadata.mime_type)
+
         dest_path = downloads_dir / safe_filename
 
+        logger.info("Downloading file to %s...", dest_path)
         await run_sync(client.download_file, file_id, dest_path)
+        logger.info("Download complete. File size on disk: %s bytes", dest_path.stat().st_size if dest_path.exists() else "N/A")
 
-        # Run ingestion (uses Gemini 3 Flash with parallel processing by default)
+        # Run ingestion (uses Gemini 2.5 Flash with parallel processing by default)
+        logger.info("Starting ingestion (skip_summary=%s, force=%s, max_workers=%s)...", skip_summary, force, max_workers)
         result = await run_sync(
             ingest_book,
             path=dest_path,
             skip_summary=skip_summary,
+            force=force,
             max_workers=max_workers,
             drive_file_id=file_id,
         )
+        logger.info("Ingestion complete. Result: %s", result)
 
         if result is None:
             return json.dumps({

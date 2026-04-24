@@ -43,6 +43,10 @@ class EmbeddingClient:
         Returns:
             768-dimensional embedding vector
         """
+        # Handle empty text gracefully
+        if not text or not text.strip():
+            return [0.0] * self.EMBEDDING_DIM
+
         result = self.client.models.embed_content(
             model=self.MODEL,
             contents=[text],
@@ -66,18 +70,34 @@ class EmbeddingClient:
         if not texts:
             return []
 
-        all_embeddings = []
+        # Track which texts are non-empty and their original indices
+        non_empty_indices = []
+        non_empty_texts = []
+        for i, text in enumerate(texts):
+            if text and text.strip():
+                non_empty_indices.append(i)
+                non_empty_texts.append(text)
 
-        # Process in batches
-        for i in range(0, len(texts), self.MAX_BATCH_SIZE):
-            batch = texts[i : i + self.MAX_BATCH_SIZE]
+        # If all texts are empty, return zero vectors
+        if not non_empty_texts:
+            return [[0.0] * self.EMBEDDING_DIM for _ in texts]
+
+        # Embed non-empty texts
+        non_empty_embeddings = []
+        for i in range(0, len(non_empty_texts), self.MAX_BATCH_SIZE):
+            batch = non_empty_texts[i : i + self.MAX_BATCH_SIZE]
             result = self.client.models.embed_content(
                 model=self.MODEL,
                 contents=batch,
                 config={"output_dimensionality": self.EMBEDDING_DIM},
             )
             batch_embeddings = [list(e.values) for e in result.embeddings]
-            all_embeddings.extend(batch_embeddings)
+            non_empty_embeddings.extend(batch_embeddings)
+
+        # Reconstruct full embeddings list with zero vectors for empty texts
+        all_embeddings = [[0.0] * self.EMBEDDING_DIM for _ in texts]
+        for orig_idx, embedding in zip(non_empty_indices, non_empty_embeddings):
+            all_embeddings[orig_idx] = embedding
 
         return all_embeddings
 

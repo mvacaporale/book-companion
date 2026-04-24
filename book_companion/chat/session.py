@@ -3,7 +3,7 @@
 from typing import Optional
 
 from book_companion.models import ChatMessage, ChatRole, Session
-from book_companion.storage import SessionStore
+from book_companion.storage import SessionStore, get_session_store
 
 
 class SessionManager:
@@ -15,7 +15,7 @@ class SessionManager:
         Args:
             store: SessionStore instance. Creates one if not provided.
         """
-        self.store = store or SessionStore()
+        self.store = store or get_session_store()
 
     def create_session(self, book_id: str, provider: str = "gemini") -> Session:
         """Create a new chat session.

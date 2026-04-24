@@ -8,7 +8,7 @@ from typing import Optional
 PRICING = {
     # Gemini models
     "gemini-2.5-flash": {"input": 0.075, "output": 0.30},
-    "gemini-3-flash": {"input": 0.10, "output": 0.40},
+    "gemini-3-flash-preview": {"input": 0.10, "output": 0.40},
     "gemini-2.5-pro": {"input": 1.25, "output": 5.00},
     "text-embedding-004": {"input": 0.00, "output": 0.00},  # Free tier
     # Claude models
