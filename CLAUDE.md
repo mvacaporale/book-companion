@@ -373,7 +373,7 @@ OAuth 2.1 authentication is fully implemented but currently **disabled** due to 
 
 | Variable | Value/Source |
 |----------|--------------|
-| `GEMINI_API_KEY` | From `~/.zshrc` |
+| `GEMINI_API_KEY` | From Proton Pass (`Agent Passwords` vault) |
 | `GOOGLE_DRIVE_TOKEN_B64` | `cat ~/.bookrc/google_token.json \| base64` |
 | `GOOGLE_DRIVE_FOLDER_ID` | `1ip13wKCBGznT2S2HSESUseiNciJBMFCm` (Books folder) |
 
