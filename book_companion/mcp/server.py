@@ -32,6 +32,11 @@ mcp = FastMCP(
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
     ),
+    # Claude.ai connectors call remote servers without carrying an mcp-session-id,
+    # so stateful mode rejects their tools/list with "Bad Request: Missing session ID"
+    # and the connector silently shows no tools. Stateless also avoids losing the
+    # in-memory session when Cloud Run load-balances across instances.
+    stateless_http=True,
 )
 
 # Thread pool for running sync code

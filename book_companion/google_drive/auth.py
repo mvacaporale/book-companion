@@ -1,6 +1,7 @@
 """OAuth 2.0 authentication for Google Drive API."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,8 @@ from typing import Optional
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+logger = logging.getLogger(__name__)
 
 # Read-only scope for Drive access
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -48,12 +51,27 @@ def _get_credentials_from_env() -> Optional[Credentials]:
 
             if creds and creds.valid:
                 return creds
+            logger.warning(
+                "%s decoded but did not yield valid credentials "
+                "(expired=%s, has_refresh_token=%s)",
+                ENV_GOOGLE_DRIVE_TOKEN_B64,
+                getattr(creds, "expired", None),
+                bool(getattr(creds, "refresh_token", None)),
+            )
         except Exception:
-            pass
+            logger.warning(
+                "Failed to load credentials from %s", ENV_GOOGLE_DRIVE_TOKEN_B64,
+                exc_info=True,
+            )
 
     # Fall back to raw JSON token
     token_json = os.environ.get(ENV_GOOGLE_DRIVE_TOKEN)
     if not token_json:
+        if not token_b64:
+            logger.warning(
+                "Google Drive not configured: neither %s nor %s is set",
+                ENV_GOOGLE_DRIVE_TOKEN_B64, ENV_GOOGLE_DRIVE_TOKEN,
+            )
         return None
 
     try:
@@ -66,8 +84,16 @@ def _get_credentials_from_env() -> Optional[Credentials]:
 
         if creds and creds.valid:
             return creds
+        logger.warning(
+            "%s did not yield valid credentials (expired=%s, has_refresh_token=%s)",
+            ENV_GOOGLE_DRIVE_TOKEN,
+            getattr(creds, "expired", None),
+            bool(getattr(creds, "refresh_token", None)),
+        )
     except Exception:
-        pass
+        logger.warning(
+            "Failed to load credentials from %s", ENV_GOOGLE_DRIVE_TOKEN, exc_info=True
+        )
 
     return None
 
