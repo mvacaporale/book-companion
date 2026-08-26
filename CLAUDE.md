@@ -327,6 +327,31 @@ Connect directly to your Cloud Run deployment:
 - **URL:** `https://<your-service-url>.run.app/mcp`
 - Get the URL with: `gcloud run services describe book-companion-mcp --region=us-central1 --format='value(status.url)'`
 
+**The server must run in stateless HTTP mode** (`stateless_http=True` on the
+`FastMCP(...)` constructor in `mcp/server.py`). Claude.ai connectors call
+`tools/list` without carrying an `mcp-session-id`. In FastMCP's default stateful
+mode that returns `400 Bad Request: Missing session ID`, and the connector shows
+**zero tools with no error and no auth prompt** — it looks like the server isn't
+registered at all. Stateless mode also avoids losing the in-memory session when
+Cloud Run load-balances across instances (`--max-instances 2`, no session affinity).
+
+Reproduce the failure without a browser:
+
+```bash
+curl -s -X POST https://<url>/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' -i | head
+```
+
+A healthy server returns 200 and the tool list. A 400 means stateful mode.
+
+### Google Drive Tools Broken?
+
+See `docs/drive-reauth-runbook.md`. Usual cause: the refresh token in the
+`GOOGLE_DRIVE_TOKEN` secret expired because the OAuth consent screen is in
+*Testing* status (Google kills those after 7 days).
+
 ### OAuth Authentication (Disabled - Future Feature)
 
 OAuth 2.1 authentication is fully implemented but currently **disabled** due to bugs in Claude.ai's web interface OAuth handling ([Issue #11814](https://github.com/anthropics/claude-code/issues/11814)).
