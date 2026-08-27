@@ -5,8 +5,10 @@ Handoff notes from the 2026-08-26 session. Start here in a new session.
 ## Where things stand
 
 The MCP server is deployed on Cloud Run and healthy. The Claude app connector
-was showing **zero tools**; root cause found and fixed (see below), but the fix
-only reaches production once the deploy from that commit finishes.
+was showing **zero tools**; root cause found and fixed in `8f70288` (see below).
+
+**The fix is committed and pushed but NOT deployed** — the CI deploy job is
+failing. See item A, which is the first thing to pick up.
 
 **Service URLs** (both aliases for the same Cloud Run service):
 - `https://book-companion-mcp-526741643129.us-central1.run.app/mcp` ← what the connector uses
@@ -41,7 +43,50 @@ identical "not configured" message. It now logs which branch failed.
 
 ## Open items
 
-### A. Verify the deploy landed (do this first)
+### A. THE DEPLOY IS FAILING — the fix is not live yet
+
+Commit `9093709` was pushed to `main` on 2026-08-27. CI ran:
+
+- **Tests job: passed**
+- **Deploy job: FAILED** at the `Deploy to Cloud Run` step
+  (run `33025327160`; GCP auth and Cloud SDK setup both succeeded, the
+  `gcloud run deploy --source .` command itself failed)
+
+Production is still serving the **old** revision. It is healthy and not
+regressed — Cloud Run keeps the last good revision when a deploy fails — but
+stateless `tools/list` still returns 400, so the Claude app still shows no tools.
+
+The failure logs need repo admin rights, which were unavailable in the session
+that pushed this. **Get them first:**
+
+```bash
+gh run view 33025327160 --repo mvacaporale/book-companion --log-failed
+```
+
+The last successful deploy was `a7e8d5c` on 2026-05-18 — over three months
+earlier. Since the only code delta is two Python files that were verified to
+start and serve correctly locally, and `docs/` isn't even copied into the image
+(see `.gcloudignore` and the Dockerfile's `COPY` lines), suspect an
+infrastructure change during that gap rather than the code. Things to check in
+the logs, roughly in order of likelihood:
+
+- Cloud Build service account permissions (Google deprecated the legacy
+  `PROJECT_NUMBER@cloudbuild.gserviceaccount.com` account)
+- The `GCP_SA_KEY` secret expiring or its service account being disabled
+- Artifact Registry repo missing/cleaned up
+- Billing on `general-477905`
+
+**Fastest path to getting the fix live** — deploy straight from the Mac,
+bypassing CI entirely:
+
+```bash
+cd ~/Documents/Projects/claude/book-companion
+git pull
+gcloud run deploy book-companion-mcp \
+  --project=general-477905 --region=us-central1 --source=.
+```
+
+Then verify:
 
 ```bash
 curl -s -X POST https://book-companion-mcp-526741643129.us-central1.run.app/mcp \
@@ -52,8 +97,12 @@ curl -s -X POST https://book-companion-mcp-526741643129.us-central1.run.app/mcp 
 
 - **200 + tool list** → fix is live. Reconnect the connector in the Claude app
   and confirm all 10 tools appear.
-- **400 Missing session ID** → deploy hasn't landed yet. Check
-  `gh run list --repo mvacaporale/book-companion`.
+- **400 Missing session ID** → still the old revision.
+
+Note that a manual `gcloud run deploy` does **not** set the env vars the workflow
+passes (`GEMINI_API_KEY`, `GOOGLE_DRIVE_TOKEN_B64`, etc.). Deploying from source
+preserves the existing revision's env vars, so this is normally fine — but
+confirm with `gcloud run services describe` afterward if chat starts failing.
 
 ### B. Google Drive tools are still broken
 
