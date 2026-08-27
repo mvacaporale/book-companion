@@ -56,11 +56,16 @@ Production is still serving the **old** revision. It is healthy and not
 regressed — Cloud Run keeps the last good revision when a deploy fails — but
 stateless `tools/list` still returns 400, so the Claude app still shows no tools.
 
+This reproduced on a second push (`788ecc9`, run `33027182380`) — same job, same
+step, same result. It is a persistent break, not a transient blip.
+
 The failure logs need repo admin rights, which were unavailable in the session
-that pushed this. **Get them first:**
+that pushed this. The check-run annotations expose only
+`Process completed with exit code 1`, with no gcloud detail. **Get the real logs
+first:**
 
 ```bash
-gh run view 33025327160 --repo mvacaporale/book-companion --log-failed
+gh run view 33027182380 --repo mvacaporale/book-companion --log-failed
 ```
 
 The last successful deploy was `a7e8d5c` on 2026-05-18 — over three months
