@@ -44,6 +44,21 @@ export ANTHROPIC_API_KEY="your-anthropic-api-key"
 
 Reload your shell or run `source ~/.zshrc`.
 
+### Google Drive (optional)
+
+To ingest books straight from Google Drive, grant the server access to one
+folder — no Google account linking required:
+
+1. In Google Drive, share your books folder with the server's service account
+   email (Viewer access). For the hosted deployment this is
+   `book-companion-drive@general-477905.iam.gserviceaccount.com`.
+2. Tell the server the folder ID (the part of the folder URL after
+   `/folders/`), via the `GOOGLE_DRIVE_FOLDER_ID` environment variable.
+
+New files dropped into the folder are picked up automatically. For local CLI
+use without a service account, `uv run bookrc setup-drive` walks through a
+personal OAuth flow instead.
+
 ## Usage
 
 ### Ingest a Book

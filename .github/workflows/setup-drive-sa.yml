@@ -1,0 +1,54 @@
+# One-off setup: create the Drive service account used as the Cloud Run
+# runtime identity. Safe to re-run (idempotent). Delete after cutover.
+name: Setup Drive Service Account
+
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: general-477905
+  SA_NAME: book-companion-drive
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create service account (idempotent)
+        run: |
+          SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+          if gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT_ID" >/dev/null 2>&1; then
+            echo "Service account already exists: $SA_EMAIL"
+          else
+            gcloud iam service-accounts create "$SA_NAME" \
+              --project "$PROJECT_ID" \
+              --display-name "Book Companion Drive reader (Cloud Run runtime identity)"
+          fi
+          echo "SA_EMAIL=$SA_EMAIL" >> "$GITHUB_ENV"
+
+      - name: Grant deployer actAs on the service account
+        run: |
+          DEPLOYER=$(gcloud config get-value account)
+          gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+            --project "$PROJECT_ID" \
+            --member "serviceAccount:${DEPLOYER}" \
+            --role "roles/iam.serviceAccountUser" \
+            || echo "::warning::Could not grant serviceAccountUser to ${DEPLOYER}. If the deploy step fails with an actAs error, grant this role manually."
+
+      - name: Ensure Drive API is enabled
+        run: |
+          gcloud services enable drive.googleapis.com --project "$PROJECT_ID" \
+            || echo "::warning::Could not enable drive.googleapis.com (may already be enabled)."
+
+      - name: Summary
+        run: |
+          echo "## Drive service account ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Share the books folder (Viewer) with: \`$SA_EMAIL\`" >> "$GITHUB_STEP_SUMMARY"

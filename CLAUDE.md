@@ -163,20 +163,22 @@ When a user asks about a book that isn't ingested:
    - **Load to context**: Use `load_book_from_drive(file_id)` for quick Q&A
    - **Full ingest**: Use `ingest_book_from_drive(file_id)` for deeper exploration
 
-### Cloud Run Deployment
+### Cloud Run Deployment (service account)
 
-For Cloud Run, set these environment variables instead of using files:
-
-| Variable | Purpose | How to Get |
-|----------|---------|------------|
-| `GOOGLE_DRIVE_TOKEN` | OAuth token JSON | Run `cat ~/.bookrc/google_token.json` after local setup |
-| `GOOGLE_DRIVE_FOLDER_ID` | Default folder to search | Your folder ID (already configured: `1ip13wKCBGznT2S2HSESUseiNciJBMFCm`) |
+The deployed server authenticates to Drive as its **runtime service account**
+(`book-companion-drive@general-477905.iam.gserviceaccount.com`) via Application
+Default Credentials — no OAuth tokens, nothing expires. Users grant access by
+sharing their books folder with that email (Viewer).
 
 **Setup steps for Cloud Run:**
-1. Run `bookrc setup-drive` locally to authenticate
-2. Copy the token: `cat ~/.bookrc/google_token.json`
-3. Set as Cloud Run secret: `GOOGLE_DRIVE_TOKEN`
-4. Set folder ID: `GOOGLE_DRIVE_FOLDER_ID=1ip13wKCBGznT2S2HSESUseiNciJBMFCm`
+1. Share the books folder with the service account email (Viewer access)
+2. Set folder ID: `GOOGLE_DRIVE_FOLDER_ID=1ip13wKCBGznT2S2HSESUseiNciJBMFCm`
+
+If Drive calls fail, the MCP tools return an error naming the exact service
+account email to share with (`verify_drive_access` in `google_drive/auth.py`).
+
+**Multi-tenant (future):** additional users = per-user folder IDs shared with
+the same service account; no additional Google setup per user.
 
 ## Common Commands
 
@@ -374,8 +376,12 @@ OAuth 2.1 authentication is fully implemented but currently **disabled** due to 
 | Variable | Value/Source |
 |----------|--------------|
 | `GEMINI_API_KEY` | From Proton Pass (`Agent Passwords` vault) |
-| `GOOGLE_DRIVE_TOKEN_B64` | `cat ~/.bookrc/google_token.json \| base64` |
 | `GOOGLE_DRIVE_FOLDER_ID` | `1ip13wKCBGznT2S2HSESUseiNciJBMFCm` (Books folder) |
+
+Drive auth comes from the service's runtime identity
+(`book-companion-drive@general-477905.iam.gserviceaccount.com`, attached via
+`--service-account` in `deploy-simple.yml`) — the Books folder must be shared
+with that email. No Drive token env vars.
 
 ### Deploy Commands
 

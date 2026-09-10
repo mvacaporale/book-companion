@@ -1,10 +1,19 @@
-"""OAuth 2.0 authentication for Google Drive API."""
+"""Authentication for Google Drive API.
+
+Two supported credential sources, tried in order:
+1. Service account via Application Default Credentials (Cloud Run runtime
+   identity, or GOOGLE_APPLICATION_CREDENTIALS locally). Users grant access
+   by sharing their books folder with the service account's email.
+2. Local user OAuth token from `bookrc setup-drive` (local development).
+"""
 
 import json
 import os
 from pathlib import Path
 from typing import Optional
 
+import google.auth
+from google.auth.exceptions import DefaultCredentialsError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -17,81 +26,75 @@ DEFAULT_CREDENTIALS_PATH = Path.home() / ".bookrc" / "google_credentials.json"
 DEFAULT_TOKEN_PATH = Path.home() / ".bookrc" / "google_token.json"
 
 # Environment variable names for Cloud Run deployment
-ENV_GOOGLE_DRIVE_TOKEN = "GOOGLE_DRIVE_TOKEN"
-ENV_GOOGLE_DRIVE_TOKEN_B64 = "GOOGLE_DRIVE_TOKEN_B64"
 ENV_GOOGLE_DRIVE_FOLDER_ID = "GOOGLE_DRIVE_FOLDER_ID"
 
 
-def _get_credentials_from_env() -> Optional[Credentials]:
+def _get_service_account_credentials():
     """
-    Try to load credentials from environment variable.
+    Try to load service account credentials via Application Default Credentials.
 
-    For Cloud Run deployment, set either:
-    - GOOGLE_DRIVE_TOKEN: Raw JSON contents of token file
-    - GOOGLE_DRIVE_TOKEN_B64: Base64-encoded JSON (preferred, avoids shell escaping)
+    On Cloud Run this resolves to the service's runtime identity; locally it
+    resolves to GOOGLE_APPLICATION_CREDENTIALS if set. End-user ADC credentials
+    (e.g. from `gcloud auth application-default login`) are ignored — they
+    don't carry Drive scopes.
 
     Returns:
-        Credentials if env var is set and valid, None otherwise
+        Scoped service account credentials, or None if unavailable
     """
-    import base64
-
-    # Try base64-encoded token first (preferred for Cloud Run)
-    token_b64 = os.environ.get(ENV_GOOGLE_DRIVE_TOKEN_B64)
-    if token_b64:
-        try:
-            token_json = base64.b64decode(token_b64).decode("utf-8")
-            token_data = json.loads(token_json)
-            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-
-            if creds and creds.valid:
-                return creds
-        except Exception:
-            pass
-
-    # Fall back to raw JSON token
-    token_json = os.environ.get(ENV_GOOGLE_DRIVE_TOKEN)
-    if not token_json:
+    try:
+        creds, _ = google.auth.default(scopes=SCOPES)
+    except DefaultCredentialsError:
         return None
 
-    try:
-        token_data = json.loads(token_json)
-        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+    # Only accept service-account-style identities (JSON key or metadata
+    # server). User ADC credentials can't be scoped for Drive.
+    if not hasattr(creds, "service_account_email"):
+        return None
 
-        # Refresh if expired
-        if creds and creds.expired and creds.refresh_token:
+    return creds
+
+
+def get_service_account_email() -> Optional[str]:
+    """
+    Return the service account email in use, or None if not using one.
+
+    This is the address users share their books folder with.
+    """
+    creds = _get_service_account_credentials()
+    if creds is None:
+        return None
+
+    email = getattr(creds, "service_account_email", None)
+    # Metadata-server credentials report "default" until a token is fetched
+    if email == "default":
+        try:
             creds.refresh(Request())
-
-        if creds and creds.valid:
-            return creds
-    except Exception:
-        pass
-
-    return None
+            email = getattr(creds, "service_account_email", None)
+        except Exception:
+            pass
+    return email
 
 
 def get_credentials(
     credentials_path: Optional[Path] = None,
     token_path: Optional[Path] = None,
-) -> Optional[Credentials]:
+):
     """
     Get valid Google API credentials.
 
     Checks in order:
-    1. GOOGLE_DRIVE_TOKEN environment variable (for Cloud Run)
-    2. Token file on disk (for local development)
+    1. Service account via Application Default Credentials (Cloud Run)
+    2. Token file on disk (local development)
 
     Args:
         credentials_path: Path to OAuth client credentials JSON
         token_path: Path to stored token JSON
 
     Returns:
-        Valid Credentials object, or None if not available
+        Valid credentials object, or None if not available
     """
-    # First, try environment variable (Cloud Run)
-    creds = _get_credentials_from_env()
+    # First, try service account credentials (Cloud Run)
+    creds = _get_service_account_credentials()
     if creds:
         return creds
 
@@ -129,7 +132,7 @@ def get_credentials(
 def authenticate(
     credentials_path: Optional[Path] = None,
     token_path: Optional[Path] = None,
-) -> Credentials:
+):
     """
     Authenticate with Google Drive API.
 
@@ -220,6 +223,53 @@ def setup_drive_auth(
         return creds is not None and creds.valid
     except Exception as e:
         raise ValueError(f"Authentication failed: {e}")
+
+
+def verify_drive_access(folder_id: Optional[str] = None) -> Optional[str]:
+    """
+    Verify Drive credentials work and the books folder is accessible.
+
+    Uses files.get on the folder rather than files.list because listing an
+    unshared folder silently returns no results instead of an error.
+
+    Args:
+        folder_id: Drive folder ID to check; defaults to configured folder
+
+    Returns:
+        None if access works, otherwise an actionable error message
+    """
+    if folder_id is None:
+        folder_id = get_config().get("default_folder_id")
+
+    creds = get_credentials()
+    if creds is None:
+        return (
+            "Google Drive not configured. "
+            "Run 'bookrc setup-drive' locally, or deploy with a service account."
+        )
+
+    if not folder_id:
+        return (
+            "No Drive folder configured. "
+            f"Set {ENV_GOOGLE_DRIVE_FOLDER_ID} or 'default_folder_id' in config."
+        )
+
+    try:
+        from googleapiclient.discovery import build
+
+        service = build("drive", "v3", credentials=creds)
+        service.files().get(fileId=folder_id, fields="id, name").execute()
+    except Exception as e:
+        sa_email = getattr(creds, "service_account_email", None)
+        if sa_email:
+            return (
+                f"Cannot access Drive folder {folder_id}. "
+                f"Share the folder with {sa_email} (Viewer access) in Google Drive, "
+                "then try again."
+            )
+        return f"Cannot access Drive folder {folder_id}: {e}"
+
+    return None
 
 
 def is_authenticated(
