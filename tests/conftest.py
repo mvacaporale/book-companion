@@ -70,7 +70,6 @@ def reset_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in [
         "MCP_OAUTH_ENABLED",
         "MCP_DEBUG",
-        "GOOGLE_DRIVE_TOKEN",
-        "GOOGLE_DRIVE_TOKEN_B64",
+        "GOOGLE_APPLICATION_CREDENTIALS",
     ]:
         monkeypatch.delenv(var, raising=False)

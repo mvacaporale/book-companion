@@ -805,17 +805,19 @@ async def find_book_in_drive(
         JSON list of matching files with id, name, mime_type, match score,
         and whether the book is already ingested locally.
 
-    Note: Requires Google Drive to be configured. Run 'bookrc setup-drive' first.
+    Note: Requires Google Drive access. Share your books folder with the
+    server's service account, or run 'bookrc setup-drive' for local use.
     """
     from rapidfuzz import fuzz
     from book_companion.google_drive import GoogleDriveClient
-    from book_companion.google_drive.auth import is_authenticated
+    from book_companion.google_drive.auth import verify_drive_access
 
-    # Check authentication
-    if not is_authenticated():
+    # Check Drive access (credentials + folder share)
+    access_error = await run_sync(verify_drive_access, folder_id)
+    if access_error:
         return json.dumps({
-            "error": "Google Drive not configured",
-            "help": "Run 'bookrc setup-drive' in the CLI to connect Google Drive.",
+            "error": "Google Drive not accessible",
+            "help": access_error,
         })
 
     ctx = get_context()
@@ -904,14 +906,15 @@ async def load_book_from_drive(file_id: str) -> str:
     from pathlib import Path
 
     from book_companion.google_drive import GoogleDriveClient
-    from book_companion.google_drive.auth import is_authenticated
+    from book_companion.google_drive.auth import verify_drive_access
     from book_companion.parsers import get_parser
 
-    # Check authentication
-    if not is_authenticated():
+    # Check Drive access (credentials + folder share)
+    access_error = await run_sync(verify_drive_access)
+    if access_error:
         return json.dumps({
-            "error": "Google Drive not configured",
-            "help": "Run 'bookrc setup-drive' in the CLI to connect Google Drive.",
+            "error": "Google Drive not accessible",
+            "help": access_error,
         })
 
     try:
@@ -1021,17 +1024,18 @@ async def ingest_book_from_drive(
     from pathlib import Path
 
     from book_companion.google_drive import GoogleDriveClient
-    from book_companion.google_drive.auth import is_authenticated
+    from book_companion.google_drive.auth import verify_drive_access
     from book_companion.ingestion import ingest_book
 
     logger.info("Starting ingest_book_from_drive for file_id=%s, skip_summary=%s", file_id, skip_summary)
 
-    # Check authentication
-    if not is_authenticated():
-        logger.warning("Google Drive not authenticated")
+    # Check Drive access (credentials + folder share)
+    access_error = await run_sync(verify_drive_access)
+    if access_error:
+        logger.warning("Google Drive not accessible: %s", access_error)
         return json.dumps({
-            "error": "Google Drive not configured",
-            "help": "Run 'bookrc setup-drive' in the CLI to connect Google Drive.",
+            "error": "Google Drive not accessible",
+            "help": access_error,
         })
 
     try:
