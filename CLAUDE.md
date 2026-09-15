@@ -90,10 +90,12 @@ book_companion/
 
 ### Storage
 
-- `VectorStore` - ChromaDB with cosine similarity
-- `BookRegistryStore` - books.json persistence
-- `SessionStore` - Session JSON files in ~/.bookrc/sessions/
-- `BookIndexStore` - Book indices in ~/.bookrc/indices/
+Backend is auto-selected in `storage/__init__.py` by `is_postgres_configured()`:
+**Postgres/pgvector when `DATABASE_URL` is set (current — Neon), else file-based.**
+
+- Postgres: `PgVectorStore` (pgvector), `PgBookRegistryStore`, `PgSessionStore`, `PgBookIndexStore`
+- File-based: `VectorStore` (ChromaDB), `BookRegistryStore` (books.json), `SessionStore` (~/.bookrc/sessions/), `BookIndexStore` (~/.bookrc/indices/)
+- Migrate file → Postgres with `scripts/migrate_to_postgres.py` (`export`/`import`/`verify`)
 
 ### Chat
 
@@ -128,31 +130,44 @@ The navigation index is included in the system prompt, giving the LLM a "map" of
 |----------|---------|
 | `GEMINI_API_KEY` | Required for embeddings, summarization, and Gemini chat |
 | `ANTHROPIC_API_KEY` | Required for Claude chat |
-| `BOOKRC_DB_PATH` | Custom data directory (default: ~/.bookrc/) |
+| `DATABASE_URL` | Postgres/pgvector connection string. **When set, ALL storage (embeddings, registry, indices, sessions) goes to Postgres**; unset → file-based `~/.bookrc/`. This is the current backend (Neon). |
+| `BOOKRC_GWS_CREDENTIALS` | Path to the gws (Google Workspace CLI) credentials file used for Drive auth (default: `~/.config/gws/credentials.json`) |
+| `BOOKRC_DB_PATH` | Custom file-based data directory (default: ~/.bookrc/); ignored when `DATABASE_URL` is set |
 
 **Default Models:**
-- Summarization: `gemini-3-flash` (faster, configurable via `--model`)
-- Chat: `gemini-2.5-flash` (better quality, configurable via `--provider`)
+- Summarization: `gemini-3.8-flash` (latest; configurable via `--model`)
+- Chat: `gemini-2.5-flash` (configurable via `--provider`)
 
 ## Google Drive Integration
 
 Allows searching and ingesting books directly from Google Drive.
 
-### Setup (One-Time)
+### Drive auth (current: reuse the gws token)
 
-1. Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Enable the Google Drive API
-3. Create OAuth 2.0 Client ID (Desktop app type)
-4. Download JSON and save to `~/.bookrc/google_credentials.json`
-5. Run `uv run bookrc setup-drive` to complete OAuth flow
+`get_credentials()` in `google_drive/auth.py` tries, in order:
+1. **Service account** via Application Default Credentials (legacy Cloud Run; returns `None` off-GCP).
+2. **gws (Google Workspace CLI) OAuth token** — `_get_gws_credentials()` reads
+   `~/.config/gws/credentials.json` (client id/secret + long-lived refresh token),
+   mints a Drive access token, and caches it to `~/.bookrc/google_token.json`
+   without mutating the gws file. This is the path in use — the gws app is
+   published to production, so the refresh token does not hit Google's 7-day
+   testing-mode expiry (the old re-auth pain).
+3. **Local OAuth flow** (`bookrc setup-drive`) as a fallback.
+
+**Setup per machine:**
+- Mac: `gws auth export --unmasked > ~/.config/gws/credentials.json` (one-time).
+- miciato: already has a plaintext `~/.config/gws/credentials.json`.
+- Folder id comes from `GOOGLE_DRIVE_FOLDER_ID` or `~/.bookrc/config.json`
+  (`1ip13wKCBGznT2S2HSESUseiNciJBMFCm`).
 
 ### Configuration Files
 
 | File | Purpose |
 |------|---------|
-| `~/.bookrc/google_credentials.json` | OAuth client credentials (from GCP) |
-| `~/.bookrc/google_token.json` | OAuth refresh token (auto-generated) |
+| `~/.config/gws/credentials.json` | gws OAuth client + refresh token (Drive auth source) |
+| `~/.bookrc/google_token.json` | Cached Drive access token (auto-generated) |
 | `~/.bookrc/config.json` | Drive settings (default_folder_id, cache_ttl) |
+| `~/.bookrc/mcp.env` | MCP launch env — holds only `pass://` refs (no secrets) |
 | `~/.bookrc/downloads/` | Downloaded book files from Drive |
 
 ### Workflow
@@ -162,23 +177,6 @@ When a user asks about a book that isn't ingested:
 2. Offer the user a choice:
    - **Load to context**: Use `load_book_from_drive(file_id)` for quick Q&A
    - **Full ingest**: Use `ingest_book_from_drive(file_id)` for deeper exploration
-
-### Cloud Run Deployment (service account)
-
-The deployed server authenticates to Drive as its **runtime service account**
-(`book-companion-drive@general-477905.iam.gserviceaccount.com`) via Application
-Default Credentials — no OAuth tokens, nothing expires. Users grant access by
-sharing their books folder with that email (Viewer).
-
-**Setup steps for Cloud Run:**
-1. Share the books folder with the service account email (Viewer access)
-2. Set folder ID: `GOOGLE_DRIVE_FOLDER_ID=1ip13wKCBGznT2S2HSESUseiNciJBMFCm`
-
-If Drive calls fail, the MCP tools return an error naming the exact service
-account email to share with (`verify_drive_access` in `google_drive/auth.py`).
-
-**Multi-tenant (future):** additional users = per-user folder IDs shared with
-the same service account; no additional Google setup per user.
 
 ## Common Commands
 
@@ -294,59 +292,41 @@ The MCP (Model Context Protocol) server enables Claude Desktop and other MCP cli
 | `load_book_from_drive` | Load book content into context (no persistence) |
 | `ingest_book_from_drive` | Download and fully ingest a book from Drive |
 
-### Running the MCP Server
+### Deployment (current): local stdio + Neon + gws + Proton Pass
 
+The server runs as a **local stdio process** in Claude Code on both the Mac and
+miciato (no hosting, no public endpoint). Secrets are pulled from Proton Pass at
+launch via `pass-cli run`, so `~/.claude.json` holds no secrets.
+
+`~/.bookrc/mcp.env` (references only, no secret values):
+```
+GEMINI_API_KEY=pass://Agent Passwords/GEMINI_API_KEY/password
+DATABASE_URL=pass://Agent Passwords/BOOKRC_DATABASE_URL/password
+GOOGLE_DRIVE_FOLDER_ID=1ip13wKCBGznT2S2HSESUseiNciJBMFCm
+```
+
+Register (Mac):
 ```bash
-# Test with MCP inspector
-cd /Users/michaelangelocaporale/Documents/Projects/claude/book-companion
-mcp dev book_companion/mcp/server.py
+claude mcp add book-companion --scope user -- \
+  pass-cli run --env-file ~/.bookrc/mcp.env -- \
+  uv run --directory /Users/michaelangelocaporale/Documents/Talus/book-companion \
+  python -m book_companion.mcp.server
 ```
 
-### Claude Desktop Configuration
+miciato is identical but adds `-e PROTON_PASS_KEY_PROVIDER=fs` and uses absolute
+paths (`/root/.local/bin/pass-cli`, `/root/.local/bin/uv`, `/root/claude/book-companion`).
+See the parent memory `pass-cli-miciato-headless` for the box's headless pass-cli rules.
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+State lives in one **Neon Postgres** project (`DATABASE_URL`), shared by both machines.
 
-```json
-{
-  "mcpServers": {
-    "book-companion": {
-      "command": "uv",
-      "args": [
-        "run", "--directory",
-        "/Users/michaelangelocaporale/Documents/Projects/claude/book-companion",
-        "python", "-m", "book_companion.mcp.server"
-      ]
-    }
-  }
-}
-```
+Quick local test (MCP inspector): `mcp dev book_companion/mcp/server.py`.
 
-After adding, restart Claude Desktop. The "book-companion" server will appear in connectors.
+### HTTP/SSE transports (legacy)
 
-### Claude.ai Web Interface
-
-Connect directly to your Cloud Run deployment:
-- **URL:** `https://<your-service-url>.run.app/mcp`
-- Get the URL with: `gcloud run services describe book-companion-mcp --region=us-central1 --format='value(status.url)'`
-
-**The server must run in stateless HTTP mode** (`stateless_http=True` on the
-`FastMCP(...)` constructor in `mcp/server.py`). Claude.ai connectors call
-`tools/list` without carrying an `mcp-session-id`. In FastMCP's default stateful
-mode that returns `400 Bad Request: Missing session ID`, and the connector shows
-**zero tools with no error and no auth prompt** — it looks like the server isn't
-registered at all. Stateless mode also avoids losing the in-memory session when
-Cloud Run load-balances across instances (`--max-instances 2`, no session affinity).
-
-Reproduce the failure without a browser:
-
-```bash
-curl -s -X POST https://<url>/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' -i | head
-```
-
-A healthy server returns 200 and the tool list. A 400 means stateful mode.
+`server.py` still supports `sse`/`http` transports and a `stateless_http=True`
+FastMCP setting (needed by claude.ai connectors, which call `tools/list` without
+an `mcp-session-id`). These are unused now that deployment is local stdio; kept
+for optional future self-hosting behind a tunnel.
 
 ### Google Drive Tools Broken?
 
@@ -392,36 +372,11 @@ OAuth 2.1 authentication is fully implemented but currently **disabled** due to 
 - Multi-book session persistence
 - Google Drive sync detection (check if Drive file has been updated)
 
-## Cloud Run Configuration
+## Cloud Run Configuration (RETIRED 2026-09-14)
 
-**Service:** `book-companion-mcp`
-
-### Required Environment Variables
-
-| Variable | Value/Source |
-|----------|--------------|
-| `GEMINI_API_KEY` | From Proton Pass (`Agent Passwords` vault) |
-| `GOOGLE_DRIVE_FOLDER_ID` | `1ip13wKCBGznT2S2HSESUseiNciJBMFCm` (Books folder) |
-
-Drive auth comes from the service's runtime identity
-(`book-companion-drive@general-477905.iam.gserviceaccount.com`, attached via
-`--service-account` in `deploy-simple.yml`) — the Books folder must be shared
-with that email. No Drive token env vars.
-
-### Deploy Commands
-
-```bash
-# Redeploy with new code
-gcloud run deploy book-companion-mcp --project=general-477905 --region=us-central1 --source=.
-
-# Update env vars only
-gcloud run services update book-companion-mcp --project=general-477905 --region=us-central1 --update-env-vars="KEY=value"
-```
-
-### OAuth Details
-
-- **Client:** "GTD Client" in GCP project `general-477905`
-- **Credentials:** `~/.bookrc/google_credentials.json`
-- **Token:** `~/.bookrc/google_token.json`
-
-See parent `CLAUDE.md` for general Cloud Run and OAuth process notes.
+The Cloud Run deployment has been **decommissioned**. The service
+`book-companion-mcp`, its GCS bucket `general-477905-bookrc-data`, and the
+`book-companion-drive` service account were deleted. Deployment is now local
+stdio + Neon (see **Deployment (current)** above). The `deploy-simple.yml` and
+`setup-drive-sa.yml` workflows were removed. Kept only as history — do not
+redeploy to Cloud Run.
