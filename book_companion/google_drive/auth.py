@@ -25,6 +25,13 @@ SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 DEFAULT_CREDENTIALS_PATH = Path.home() / ".bookrc" / "google_credentials.json"
 DEFAULT_TOKEN_PATH = Path.home() / ".bookrc" / "google_token.json"
 
+# Reuse the Google Workspace CLI (`gws`) OAuth token for Drive access. gws is
+# authenticated as the user with a long-lived (production-app) refresh token, so
+# reusing it avoids book-companion's own OAuth flow and its 7-day token expiry.
+ENV_GWS_CREDENTIALS_PATH = "BOOKRC_GWS_CREDENTIALS"
+DEFAULT_GWS_CREDENTIALS_PATH = Path.home() / ".config" / "gws" / "credentials.json"
+DEFAULT_GWS_CLIENT_SECRET_PATH = Path.home() / ".config" / "gws" / "client_secret.json"
+
 # Environment variable names for Cloud Run deployment
 ENV_GOOGLE_DRIVE_FOLDER_ID = "GOOGLE_DRIVE_FOLDER_ID"
 
@@ -50,6 +57,79 @@ def _get_service_account_credentials():
     # server). User ADC credentials can't be scoped for Drive.
     if not hasattr(creds, "service_account_email"):
         return None
+
+    return creds
+
+
+def _unwrap_oauth_client(data: dict) -> dict:
+    """Flatten an 'installed'/'web' OAuth-client wrapper into the top level."""
+    for key in ("installed", "web"):
+        wrapper = data.get(key)
+        if isinstance(wrapper, dict):
+            merged = dict(wrapper)
+            merged.update({k: v for k, v in data.items() if k != key})
+            return merged
+    return data
+
+
+def _get_gws_credentials():
+    """
+    Reuse the Google Workspace CLI (`gws`) OAuth token for Drive access.
+
+    gws holds a long-lived refresh token (its OAuth app is published, so the
+    token doesn't hit Google's 7-day testing-mode expiry). We mint a Drive access
+    token from that refresh token without creating a new token or mutating gws's
+    files, and cache the access token to DEFAULT_TOKEN_PATH.
+
+    Returns:
+        Valid credentials, or None if gws credentials are absent or unusable.
+    """
+    gws_path = Path(os.getenv(ENV_GWS_CREDENTIALS_PATH, str(DEFAULT_GWS_CREDENTIALS_PATH)))
+    if not gws_path.exists():
+        return None
+
+    try:
+        with open(gws_path) as f:
+            data = _unwrap_oauth_client(json.load(f))
+    except Exception:
+        return None
+
+    client_id = data.get("client_id")
+    client_secret = data.get("client_secret")
+    refresh_token = data.get("refresh_token")
+
+    # gws may split the OAuth client into a sibling client_secret.json.
+    if not (client_id and client_secret) and DEFAULT_GWS_CLIENT_SECRET_PATH.exists():
+        try:
+            with open(DEFAULT_GWS_CLIENT_SECRET_PATH) as f:
+                client = _unwrap_oauth_client(json.load(f))
+            client_id = client_id or client.get("client_id")
+            client_secret = client_secret or client.get("client_secret")
+        except Exception:
+            pass
+
+    if not (refresh_token and client_id and client_secret):
+        return None
+
+    creds = Credentials(
+        token=data.get("token") or data.get("access_token"),
+        refresh_token=refresh_token,
+        client_id=client_id,
+        client_secret=client_secret,
+        token_uri=data.get("token_uri", "https://oauth2.googleapis.com/token"),
+        scopes=["https://www.googleapis.com/auth/drive"],
+    )
+
+    try:
+        creds.refresh(Request())
+    except Exception:
+        return None
+
+    # Cache the access token for reuse; never write back to the gws file.
+    try:
+        _save_credentials(creds, DEFAULT_TOKEN_PATH)
+    except Exception:
+        pass
 
     return creds
 
@@ -96,6 +176,11 @@ def get_credentials(
     # First, try service account credentials (Cloud Run)
     creds = _get_service_account_credentials()
     if creds:
+        return creds
+
+    # Next, reuse the gws (Google Workspace CLI) OAuth token if available
+    creds = _get_gws_credentials()
+    if creds and creds.valid:
         return creds
 
     # Fall back to file-based credentials (local)
