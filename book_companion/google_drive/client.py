@@ -97,7 +97,7 @@ class GoogleDriveClient:
         Returns:
             List of (DriveFile, score) tuples, sorted by score descending
         """
-        # List all book files (cached)
+        # List all book files (cached; falls back to the configured folder)
         files = self._list_book_files(folder_id)
 
         # Fuzzy match against query
@@ -175,7 +175,7 @@ class GoogleDriveClient:
 
         Args:
             folder_id: Optional folder ID to list from (defaults to the
-                configured default folder; with neither, searches all of Drive)
+                configured folder)
 
         Returns:
             List of DriveFile objects
