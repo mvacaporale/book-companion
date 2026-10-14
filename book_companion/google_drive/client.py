@@ -97,10 +97,6 @@ class GoogleDriveClient:
         Returns:
             List of (DriveFile, score) tuples, sorted by score descending
         """
-        # Get folder from config if not specified
-        if folder_id is None:
-            folder_id = get_config().get("default_folder_id")
-
         # List all book files (cached)
         files = self._list_book_files(folder_id)
 
@@ -178,11 +174,15 @@ class GoogleDriveClient:
         List all book files in folder (with caching).
 
         Args:
-            folder_id: Optional folder ID to list from
+            folder_id: Optional folder ID to list from (defaults to the
+                configured default folder; with neither, searches all of Drive)
 
         Returns:
             List of DriveFile objects
         """
+        if folder_id is None:
+            folder_id = get_config().get("default_folder_id")
+
         cache_key = folder_id or "__root__"
         current_time = time.time()
 
