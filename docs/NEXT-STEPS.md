@@ -1,3 +1,5 @@
+> **Stale (2026-10-19):** written for the retired Cloud Run deploy. Current deployment is in CLAUDE.md, "Deployment (current)".
+
 # Next Steps — Claude App Integration
 
 Handoff notes from the 2026-08-26 session. Start here in a new session.
