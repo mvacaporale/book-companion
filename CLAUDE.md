@@ -305,17 +305,23 @@ DATABASE_URL=pass://Agent Passwords/BOOKRC_DATABASE_URL/password
 GOOGLE_DRIVE_FOLDER_ID=1ip13wKCBGznT2S2HSESUseiNciJBMFCm
 ```
 
-Register (Mac):
+Register (Mac). The server runs straight from GitHub `main` with `uvx`, so merging
+a PR is the deploy: the next Claude Code session that starts the server picks it up
+(`--refresh` re-checks `main` on every launch; no local checkout or `git pull` needed):
 ```bash
 claude mcp add book-companion --scope user -- \
   pass-cli run --env-file ~/.bookrc/mcp.env -- \
-  uv run --directory /Users/michaelangelocaporale/Documents/Talus/book-companion \
-  python -m book_companion.mcp.server
+  uvx --refresh --from git+https://github.com/mvacaporale/book-companion bookrc-mcp
 ```
 
 miciato is identical but adds `-e PROTON_PASS_KEY_PROVIDER=fs` and uses absolute
-paths (`/root/.local/bin/pass-cli`, `/root/.local/bin/uv`, `/root/claude/book-companion`).
+paths (`/root/.local/bin/pass-cli`, `/root/.local/bin/uvx`).
 See the parent memory `pass-cli-miciato-headless` for the box's headless pass-cli rules.
+
+`uvx` resolves dependencies from `pyproject.toml`, not `uv.lock`, so keep upper
+bounds on anything with breaking majors (e.g. `mcp<2`: mcp 2.x removed `FastMCP`).
+To run a local checkout instead (e.g. testing a branch), swap the last line for
+`uv run --directory <checkout> bookrc-mcp`.
 
 State lives in one **Neon Postgres** project (`DATABASE_URL`), shared by both machines.
 

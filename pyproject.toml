@@ -23,7 +23,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "tenacity>=8.0.0",
     # MCP Server
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2",
     # Google Drive Integration
     "google-api-python-client>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
@@ -46,6 +46,7 @@ test = [
 
 [project.scripts]
 bookrc = "book_companion.cli:cli"
+bookrc-mcp = "book_companion.mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]
