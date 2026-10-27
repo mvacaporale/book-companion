@@ -46,18 +46,31 @@ Reload your shell or run `source ~/.zshrc`.
 
 ### Google Drive (optional)
 
-To ingest books straight from Google Drive, grant the server access to one
-folder — no Google account linking required:
+Drive access reuses the Google Workspace CLI (`gws`) OAuth token: export it
+once with `gws auth export --unmasked > ~/.config/gws/credentials.json`, and set
+the books folder ID (the part of the folder URL after `/folders/`) via
+`GOOGLE_DRIVE_FOLDER_ID` or `default_folder_id` in `~/.bookrc/config.json`.
+`uv run bookrc setup-drive` is a fallback personal OAuth flow.
 
-1. In Google Drive, share your books folder with the server's service account
-   email (Viewer access). For the hosted deployment this is
-   `book-companion-drive@general-477905.iam.gserviceaccount.com`.
-2. Tell the server the folder ID (the part of the folder URL after
-   `/folders/`), via the `GOOGLE_DRIVE_FOLDER_ID` environment variable.
+### Automatic ingestion from Drive
 
-New files dropped into the folder are picked up automatically. For local CLI
-use without a service account, `uv run bookrc setup-drive` walks through a
-personal OAuth flow instead.
+`.github/workflows/drive-sync.yml` runs `bookrc drive sync` daily at 10:00 UTC
+from `main`: it lists the books folder, skips files already in the library
+(Drive checksum equals a stored file hash, or the filename matches an existing
+title), and downloads + ingests up to 5 new books into Neon. Drop a book in the
+folder and it shows up in the MCP tools by the next morning; to get it sooner,
+run the workflow by hand from the Actions tab (inputs: `dry_run`, `max_books`).
+
+One-time setup: add three repo secrets (Settings → Secrets and variables →
+Actions). Until they exist the job skips with a warning.
+
+| Secret | Value |
+|--------|-------|
+| `GEMINI_API_KEY` | Same key as `~/.bookrc/mcp.env` (Proton Pass `GEMINI_API_KEY`) |
+| `DATABASE_URL` | Neon connection string (Proton Pass `BOOKRC_DATABASE_URL`) |
+| `GWS_CREDENTIALS_JSON` | Contents of `~/.config/gws/credentials.json` |
+
+A failed book makes the run red (GitHub emails you); the other books still go in.
 
 ## Usage
 

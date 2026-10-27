@@ -965,5 +965,54 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
         sys.exit(1)
 
 
+@drive.command("sync")
+@click.option("--folder", "-f", "folder_id", help="Folder ID to sync (default: configured folder)")
+@click.option("--max-books", default=5, help="Most books to ingest in one run (default: 5)")
+@click.option("--dry-run", is_flag=True, help="List new books without ingesting them")
+@click.option("--skip-summary", is_flag=True, help="Skip summarization step")
+def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_summary: bool):
+    """Ingest every book in the Drive folder that isn't ingested yet.
+
+    Exits non-zero if Drive is unreachable or any book fails, so the
+    scheduled job shows up red.
+    """
+    from book_companion.drive_sync import sync_drive_folder
+    from book_companion.google_drive.auth import verify_drive_access
+    from book_companion.ingestion import ingest_book
+    from book_companion.storage import get_book_registry_store
+
+    access_error = verify_drive_access(folder_id)
+    if access_error:
+        console.print(f"[red]Error:[/red] {access_error}")
+        sys.exit(1)
+
+    result = sync_drive_folder(
+        client=GoogleDriveClient(),
+        books=get_book_registry_store().list_books(),
+        ingest_fn=lambda **kw: ingest_book(console=console, **kw),
+        downloads_dir=Path.home() / ".bookrc" / "downloads",
+        folder_id=folder_id,
+        max_books=max_books,
+        dry_run=dry_run,
+        skip_summary=skip_summary,
+    )
+
+    console.print()
+    console.print(
+        f"Drive sync: {result.seen} in folder, {result.already_ingested} already ingested, "
+        f"{len(result.ingested)} ingested, {len(result.failed)} failed, "
+        f"{len(result.pending)} {'new' if dry_run else 'left for next run'}"
+    )
+    for book in result.ingested:
+        console.print(f"  [green]+[/green] {book['title']} ({book['book_id']})")
+    for name in result.pending:
+        console.print(f"  [dim]…[/dim] {name}")
+    for name, error in result.failed:
+        console.print(f"  [red]x[/red] {name}: {error}")
+
+    if result.failed:
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
