@@ -54,23 +54,25 @@ the books folder ID (the part of the folder URL after `/folders/`) via
 
 ### Automatic ingestion from Drive
 
-`.github/workflows/drive-sync.yml` runs `bookrc drive sync` daily at 10:00 UTC
-from `main`: it lists the books folder, skips files already in the library
-(Drive checksum equals a stored file hash, or the filename matches an existing
-title), and downloads + ingests up to 5 new books into Neon. Drop a book in the
-folder and it shows up in the MCP tools by the next morning; to get it sooner,
-run the workflow by hand from the Actions tab (inputs: `dry_run`, `max_books`).
+Drop a book in the Drive books folder and it's ingested within about 5–15
+minutes. A systemd timer on miciato (`deploy/miciato/`) runs `bookrc drive sync`
+every 5 minutes, straight from GitHub `main` via `uvx`, so merging is the deploy.
+Each check lists the folder and skips files already in the library (Drive
+checksum equals a stored file hash, or the filename matches an existing title);
+only new books are downloaded and ingested (up to 5 per run, ~$0.03 each).
 
-One-time setup: add three repo secrets (Settings → Secrets and variables →
-Actions). Until they exist the job skips with a warning.
+One-time install on miciato (uses the same `/root/.bookrc/mcp.env` as the MCP
+server; re-run only if the unit files change):
 
-| Secret | Value |
-|--------|-------|
-| `GEMINI_API_KEY` | Same key as `~/.bookrc/mcp.env` (Proton Pass `GEMINI_API_KEY`) |
-| `DATABASE_URL` | Neon connection string (Proton Pass `BOOKRC_DATABASE_URL`) |
-| `GWS_CREDENTIALS_JSON` | Contents of `~/.config/gws/credentials.json` |
+```bash
+PROTON_PASS_KEY_PROVIDER=fs /root/.local/bin/pass-cli run --env-file /root/.bookrc/mcp.env -- \
+  /root/.local/bin/uvx --from git+https://github.com/mvacaporale/book-companion bookrc drive sync --dry-run
+git clone https://github.com/mvacaporale/book-companion /tmp/bc && bash /tmp/bc/deploy/miciato/install.sh
+```
 
-A failed book makes the run red (GitHub emails you); the other books still go in.
+The first command previews what the first run will ingest. Logs:
+`journalctl -u book-sync`. To check by hand anywhere with the env set:
+`uv run bookrc drive sync` (`--dry-run`, `--max-books N`).
 
 ## Usage
 

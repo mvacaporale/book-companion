@@ -1,0 +1,11 @@
+[Unit]
+Description=Ingest new books from the Drive books folder (bookrc drive sync)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PROTON_PASS_KEY_PROVIDER=fs
+# uvx runs the CLI straight from GitHub main, so a merge is the deploy.
+ExecStart=/root/.local/bin/pass-cli run --env-file /root/.bookrc/mcp.env -- \
+    /root/.local/bin/uvx --refresh-package book-companion \
+    --from git+https://github.com/mvacaporale/book-companion bookrc drive sync

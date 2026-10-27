@@ -973,8 +973,8 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
 def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_summary: bool):
     """Ingest every book in the Drive folder that isn't ingested yet.
 
-    Exits non-zero if Drive is unreachable or any book fails, so the
-    scheduled job shows up red.
+    Exits non-zero if Drive is unreachable or any book fails, so a
+    failed timer run shows up in systemctl status.
     """
     from book_companion.drive_sync import sync_drive_folder
     from book_companion.google_drive.auth import verify_drive_access
