@@ -92,6 +92,9 @@ book_companion/
 
 Backend is auto-selected in `storage/__init__.py` by `is_postgres_configured()`:
 **Postgres/pgvector when `DATABASE_URL` is set (current — Neon), else file-based.**
+Always obtain stores via `get_vector_store()` / `get_book_registry_store()` / `get_session_store()` /
+`get_book_index_store()` — never construct `VectorStore()` etc. directly, or that code path silently
+uses `~/.bookrc/` while everything else uses Neon (enforced by `tests/test_cli_storage.py`).
 
 - Postgres: `PgVectorStore` (pgvector), `PgBookRegistryStore`, `PgSessionStore`, `PgBookIndexStore`
 - File-based: `VectorStore` (ChromaDB), `BookRegistryStore` (books.json), `SessionStore` (~/.bookrc/sessions/), `BookIndexStore` (~/.bookrc/indices/)
