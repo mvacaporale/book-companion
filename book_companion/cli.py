@@ -16,7 +16,12 @@ from rich.markdown import Markdown
 from book_companion.models import Book, BookFormat
 from book_companion.parsers import get_parser
 from book_companion.processing import Chunker, EmbeddingClient, Summarizer
-from book_companion.storage import VectorStore, BookRegistryStore, SessionStore, BookIndexStore
+from book_companion.storage import (
+    get_vector_store,
+    get_book_registry_store,
+    get_session_store,
+    get_book_index_store,
+)
 from book_companion.chat import ChatEngine
 from book_companion.llm import get_llm_client, list_providers
 from book_companion.utils.costs import calculate_cost, format_cost, format_tokens
@@ -68,7 +73,7 @@ def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
         sys.exit(1)
 
     # Check for duplicates
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     file_hash = get_file_hash(path)
 
     existing = registry.find_by_hash(file_hash)
@@ -120,14 +125,14 @@ def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
 
         # Store in vector database
         progress.update(task, description="Storing in database...")
-        vector_store = VectorStore()
+        vector_store = get_vector_store()
 
         # Delete existing if re-ingesting
         if existing:
             vector_store.delete_book(existing.id)
             registry.remove_book(existing.id)
             # Also delete existing index
-            index_store = BookIndexStore()
+            index_store = get_book_index_store()
             index_store.delete(existing.id)
 
         vector_store.add_chunks(temp_id, chunks)
@@ -185,7 +190,7 @@ def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
                 )
 
                 # Save the index
-                index_store = BookIndexStore()
+                index_store = get_book_index_store()
                 index_store.save(book_index)
 
                 # Calculate elapsed time
@@ -249,7 +254,7 @@ def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
 def chat(book_id: str, provider: str, session_id: Optional[str]):
     """Start a chat session with a book."""
     # Load book
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     book = registry.get_book(book_id)
 
     if book is None:
@@ -258,7 +263,7 @@ def chat(book_id: str, provider: str, session_id: Optional[str]):
         sys.exit(1)
 
     # Load book index if available
-    index_store = BookIndexStore()
+    index_store = get_book_index_store()
     book_index = index_store.load(book_id)
 
     # Initialize chat engine
@@ -329,7 +334,7 @@ def list():
 @list.command("books")
 def list_books():
     """List all ingested books."""
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     books = registry.list_books()
 
     if not books:
@@ -337,7 +342,7 @@ def list_books():
         console.print("Run [bold]bookrc ingest <path>[/bold] to add a book.")
         return
 
-    index_store = BookIndexStore()
+    index_store = get_book_index_store()
 
     table = Table(title="Ingested Books")
     table.add_column("ID", style="cyan")
@@ -367,14 +372,14 @@ def list_books():
 @click.argument("book_id")
 def list_sessions(book_id: str):
     """List chat sessions for a book."""
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     book = registry.get_book(book_id)
 
     if book is None:
         console.print(f"[red]Error:[/red] Book not found: {book_id}")
         sys.exit(1)
 
-    store = SessionStore()
+    store = get_session_store()
     sessions = store.list_sessions(book_id)
 
     if not sessions:
@@ -404,7 +409,7 @@ def list_sessions(book_id: str):
 @click.argument("book_id")
 def info(book_id: str):
     """Show detailed information about a book."""
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     book = registry.get_book(book_id)
 
     if book is None:
@@ -412,11 +417,11 @@ def info(book_id: str):
         sys.exit(1)
 
     # Get session count
-    session_store = SessionStore()
+    session_store = get_session_store()
     sessions = session_store.list_sessions(book_id)
 
     # Get index info
-    index_store = BookIndexStore()
+    index_store = get_book_index_store()
     book_index = index_store.load(book_id)
 
     info_lines = [
@@ -475,14 +480,14 @@ def info(book_id: str):
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
 def delete(book_id: str, yes: bool):
     """Delete a book and all its data."""
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     book = registry.get_book(book_id)
 
     if book is None:
         console.print(f"[red]Error:[/red] Book not found: {book_id}")
         sys.exit(1)
 
-    index_store = BookIndexStore()
+    index_store = get_book_index_store()
     has_index = index_store.exists(book_id)
 
     if not yes:
@@ -499,7 +504,7 @@ def delete(book_id: str, yes: bool):
             return
 
     # Delete vector data
-    vector_store = VectorStore()
+    vector_store = get_vector_store()
     vector_store.delete_book(book_id)
 
     # Delete index
@@ -507,7 +512,7 @@ def delete(book_id: str, yes: bool):
         index_store.delete(book_id)
 
     # Delete sessions
-    session_store = SessionStore()
+    session_store = get_session_store()
     deleted_sessions = session_store.delete_book_sessions(book_id)
 
     # Delete book record
@@ -524,14 +529,14 @@ def delete(book_id: str, yes: bool):
 @click.argument("book_id")
 def index(book_id: str):
     """Show the book's navigation index (for debugging)."""
-    registry = BookRegistryStore()
+    registry = get_book_registry_store()
     book = registry.get_book(book_id)
 
     if book is None:
         console.print(f"[red]Error:[/red] Book not found: {book_id}")
         sys.exit(1)
 
-    index_store = BookIndexStore()
+    index_store = get_book_index_store()
     book_index = index_store.load(book_id)
 
     if not book_index:
@@ -554,9 +559,9 @@ def stats(book_id: Optional[str]):
     If BOOK_ID is provided, shows stats for that book only.
     Otherwise, shows aggregate stats across all books.
     """
-    registry = BookRegistryStore()
-    index_store = BookIndexStore()
-    session_store = SessionStore()
+    registry = get_book_registry_store()
+    index_store = get_book_index_store()
+    session_store = get_session_store()
 
     if book_id:
         # Stats for a specific book
