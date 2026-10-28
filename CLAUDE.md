@@ -96,6 +96,7 @@ Backend is auto-selected in `storage/__init__.py` by `is_postgres_configured()`:
 
 - Postgres: `PgVectorStore` (pgvector), `PgBookRegistryStore`, `PgSessionStore`, `PgBookIndexStore`
 - File-based: `VectorStore` (ChromaDB), `BookRegistryStore` (books.json), `SessionStore` (~/.bookrc/sessions/), `BookIndexStore` (~/.bookrc/indices/)
+- Always get stores from the `get_*_store()` factories (CLI, ingestion, MCP); constructing `VectorStore()`/`BookRegistryStore()` directly silently bypasses Neon.
 - Migrate file → Postgres with `scripts/migrate_to_postgres.py` (`export`/`import`/`verify`)
 
 ### Chat
