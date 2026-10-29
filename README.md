@@ -54,25 +54,33 @@ the books folder ID (the part of the folder URL after `/folders/`) via
 
 ### Automatic ingestion from Drive
 
-Drop a book in the Drive books folder and it's ingested within about 5–15
-minutes. A systemd timer on miciato (`deploy/miciato/`) runs `bookrc drive sync`
-every 5 minutes, straight from GitHub `main` via `uvx`, so merging is the deploy.
-Each check lists the folder and skips files already in the library (Drive
-checksum equals a stored file hash, or the filename matches an existing title);
-only new books are downloaded and ingested (up to 5 per run, ~$0.03 each).
+Drop a book in the Drive books folder and it's ingested within about 5–10
+minutes, with nothing running on your own machines:
 
-One-time install on miciato (uses the same `/root/.bookrc/mcp.env` as the MCP
-server; re-run only if the unit files change):
+1. `drive-watcher/Code.gs`, a Google Apps Script, checks the folder every 5
+   minutes. When its contents change, it starts the `drive-sync.yml` workflow.
+2. The workflow runs `bookrc drive sync` from `main`. It skips files that are
+   already in the library (the Drive checksum matches a stored file hash, or
+   the filename matches an existing title) and ingests up to 5 new books into
+   Neon, about $0.03 each. A daily run at 10:00 UTC is a backstop in case the
+   watcher missed a change.
 
-```bash
-PROTON_PASS_KEY_PROVIDER=fs /root/.local/bin/pass-cli run --env-file /root/.bookrc/mcp.env -- \
-  /root/.local/bin/uvx --from git+https://github.com/mvacaporale/book-companion bookrc drive sync --dry-run
-git clone https://github.com/mvacaporale/book-companion /tmp/bc && bash /tmp/bc/deploy/miciato/install.sh
-```
+You can also start a run by hand from the Actions tab (inputs: `dry_run`,
+`max_books`). GitHub emails you if a run fails; Apps Script emails you if the
+watcher fails.
 
-The first command previews what the first run will ingest. Logs:
-`journalctl -u book-sync`. To check by hand anywhere with the env set:
-`uv run bookrc drive sync` (`--dry-run`, `--max-books N`).
+One-time setup:
+
+1. Add three repo secrets (Settings → Secrets and variables → Actions). Until
+   they exist, the workflow skips with a warning.
+
+   | Secret | Value |
+   |--------|-------|
+   | `GEMINI_API_KEY` | Same key as `~/.bookrc/mcp.env` (Proton Pass `GEMINI_API_KEY`) |
+   | `DATABASE_URL` | Neon connection string (Proton Pass `BOOKRC_DATABASE_URL`) |
+   | `GWS_CREDENTIALS_JSON` | Contents of `~/.config/gws/credentials.json` |
+
+2. Set up the watcher: follow [drive-watcher/README.md](drive-watcher/README.md).
 
 ## Usage
 

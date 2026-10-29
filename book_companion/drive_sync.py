@@ -2,7 +2,7 @@
 
 `sync_drive_folder` lists the books folder, skips files that are already
 ingested, and downloads + ingests the rest. It runs from `bookrc drive sync`
-(every 5 minutes from the miciato timer in `deploy/miciato/`).
+(the `drive-sync.yml` workflow, started by the Drive watcher in `drive-watcher/`).
 
 A Drive file counts as already ingested when either:
   - its Drive md5Checksum equals a registered book's file_hash (both are the

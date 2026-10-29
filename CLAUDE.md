@@ -172,19 +172,23 @@ Allows searching and ingesting books directly from Google Drive.
 | `~/.bookrc/mcp.env` | MCP launch env — holds only `pass://` refs (no secrets) |
 | `~/.bookrc/downloads/` | Downloaded book files from Drive |
 
-### Automatic ingestion (every 5 min, on miciato)
+### Automatic ingestion (Drive watcher → GitHub Actions)
 
-A systemd timer on miciato (`deploy/miciato/book-sync.{service,timer}`,
-installed once with `deploy/miciato/install.sh`) runs `bookrc drive sync` every
-5 minutes via `pass-cli run --env-file /root/.bookrc/mcp.env -- uvx
---refresh-package book-companion --from git+...`, so code deploys on merge
-(unit-file changes need a re-install). `drive_sync.sync_drive_folder` treats a
+`drive-watcher/Code.gs` (Google Apps Script, user-installed at script.google.com,
+not deployed from the repo) fingerprints the books folder's file IDs every 5
+minutes and, on change, dispatches `.github/workflows/drive-sync.yml` using a
+fine-grained token (`GITHUB_TOKEN` script property, Actions read/write on this
+repo only). The workflow also runs daily at 10:00 UTC as a backstop, and by hand
+(`dry_run`, `max_books` inputs). It runs `bookrc drive sync` from `main` (merge =
+deploy) with repo secrets `GEMINI_API_KEY`, `DATABASE_URL`, `GWS_CREDENTIALS_JSON`,
+and skips with a warning without them. `drive_sync.sync_drive_folder` treats a
 Drive file as already ingested when its Drive `md5Checksum` equals a book's
 `file_hash`, or its cleaned filename fuzzy-matches a title (>= 80, same rule as
 `find_book_in_drive`), and ingests at most 5 new books per run. Per-book
-failures don't stop the run but exit non-zero (`systemctl status book-sync`).
-Chosen over GitHub Actions (free minutes only allow ~hourly) and Inngest (needs
-a hosted HTTP endpoint). Logs: `journalctl -u book-sync`.
+failures don't stop the run but exit non-zero, so GitHub emails the user.
+Drive push notifications were rejected (need a public HTTPS endpoint, channels
+expire), as were a miciato timer (user wants it self-contained in the project)
+and Inngest (needs a hosted endpoint).
 
 ### Workflow
 
@@ -393,7 +397,7 @@ OAuth 2.1 authentication is fully implemented but currently **disabled** due to 
 - Thematic retrieval using summaries first
 - Section-level summarization (H2/H3)
 - Multi-book session persistence
-- Google Drive sync detection for *changed* files (new files are auto-ingested within minutes; edits to an already-ingested file are not)
+- Google Drive sync detection for *changed* files (new files are auto-ingested within ~10 minutes; edits to an already-ingested file are not)
 
 ## Cloud Run Configuration (RETIRED 2026-09-14)
 

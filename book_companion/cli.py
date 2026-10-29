@@ -979,7 +979,7 @@ def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_sum
     """Ingest every book in the Drive folder that isn't ingested yet.
 
     Exits non-zero if Drive is unreachable or any book fails, so a
-    failed timer run shows up in systemctl status.
+    failed workflow run shows up red.
     """
     from book_companion.drive_sync import sync_drive_folder
     from book_companion.google_drive.auth import verify_drive_access
