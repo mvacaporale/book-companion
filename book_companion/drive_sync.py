@@ -16,6 +16,10 @@ the backlog that predates this job isn't ingested; the workflow sets it via
 DRIVE_SYNC_SINCE. Note a file moved into the folder keeps its original
 createdTime, so an old file moved in is skipped too (ingest it by hand).
 
+`reingest_books` (`bookrc drive reingest`, the `reingest.yml` workflow) rebuilds
+already-ingested books from their Drive files after a parser change, keeping
+each book's ID and chat sessions.
+
 Failures are per-book and non-fatal; the caller decides the exit code.
 """
 
@@ -121,6 +125,70 @@ def sync_drive_folder(
             result.failed.append((file.name, str(e)))
 
     result.pending = [f.name for f in new_files[max_books:]]
+    return result
+
+
+@dataclass
+class ReingestResult:
+    """What one re-ingest pass did."""
+
+    reingested: list[dict] = field(default_factory=list)
+    planned: list[tuple[str, str]] = field(default_factory=list)  # (book, Drive file) on dry run
+    missing: list[str] = field(default_factory=list)  # books with no Drive file
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (book, error)
+
+
+def find_drive_file(
+    client: GoogleDriveClient, book: Book, files: list[DriveFile]
+) -> Optional[DriveFile]:
+    """The Drive file a book came from: same checksum, else best title match."""
+    for file in files:
+        if file.md5_checksum and file.md5_checksum == book.file_hash:
+            return file
+    best, best_score = None, 0.0
+    for file in files:
+        clean_name = client._clean_book_filename(file.name).lower()
+        score = fuzz.token_set_ratio(clean_name, book.title.lower())
+        if score >= TITLE_MATCH_THRESHOLD and score > best_score:
+            best, best_score = file, score
+    return best
+
+
+def reingest_books(
+    client: GoogleDriveClient,
+    books: list[Book],
+    ingest_fn: Callable[..., Optional[dict]],
+    downloads_dir: Path,
+    folder_id: Optional[str] = None,
+    dry_run: bool = False,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+) -> ReingestResult:
+    """Re-ingest each book from its Drive file, in place (same book ID)."""
+    result = ReingestResult()
+    files = client._list_book_files(folder_id)
+
+    for book in books:
+        label = f"{book.title} ({book.id})"
+        file = find_drive_file(client, book, files)
+        if file is None:
+            result.missing.append(label)
+            continue
+        if dry_run:
+            result.planned.append((label, file.name))
+            continue
+        try:
+            dest = client.download_file(file.id, downloads_dir / local_filename(file))
+            ingested = ingest_fn(
+                path=dest, drive_file_id=file.id, replace_book_id=book.id,
+                title=title, author=author,
+            )
+            if ingested is not None:
+                result.reingested.append(ingested)
+        except Exception as e:
+            logger.exception("Re-ingest failed for %s", label)
+            result.failed.append((label, str(e)))
+
     return result
 
 

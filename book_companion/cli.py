@@ -1034,5 +1034,72 @@ def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_sum
         sys.exit(1)
 
 
+@drive.command("reingest")
+@click.option("--book", "-b", "book_ids", multiple=True, help="Book ID to re-ingest (repeatable; default: all)")
+@click.option("--folder", "-f", "folder_id", help="Folder ID to look in (default: configured folder)")
+@click.option("--dry-run", is_flag=True, help="Show which Drive file each book would be rebuilt from")
+@click.option("--title", "-t", help="Override the title (only with a single --book)")
+@click.option("--author", "-a", help="Override the author (only with a single --book)")
+def drive_reingest(book_ids: tuple[str, ...], folder_id: Optional[str], dry_run: bool,
+                   title: Optional[str], author: Optional[str]):
+    """Rebuild ingested books from their Drive files, keeping IDs and chat sessions.
+
+    Use after a parser change so stored books pick up the new chapter
+    numbering, metadata and chunking. Exits non-zero if any book fails
+    or has no Drive file.
+    """
+    from book_companion.drive_sync import reingest_books
+    from book_companion.google_drive.auth import verify_drive_access
+    from book_companion.ingestion import ingest_book
+    from book_companion.storage import get_book_registry_store
+
+    if (title or author) and len(book_ids) != 1:
+        console.print("[red]Error:[/red] --title/--author need exactly one --book.")
+        sys.exit(1)
+
+    books = get_book_registry_store().list_books()
+    if book_ids:
+        unknown = set(book_ids) - {b.id for b in books}
+        if unknown:
+            console.print(f"[red]Error:[/red] Unknown book ID(s): {', '.join(sorted(unknown))}")
+            sys.exit(1)
+        books = [b for b in books if b.id in book_ids]
+
+    access_error = verify_drive_access(folder_id)
+    if access_error:
+        console.print(f"[red]Error:[/red] {access_error}")
+        sys.exit(1)
+
+    result = reingest_books(
+        client=GoogleDriveClient(),
+        books=books,
+        ingest_fn=lambda **kw: ingest_book(console=console, **kw),
+        downloads_dir=Path.home() / ".bookrc" / "downloads",
+        folder_id=folder_id,
+        dry_run=dry_run,
+        title=title,
+        author=author,
+    )
+
+    console.print()
+    console.print(
+        f"Re-ingest: {len(books)} books, {len(result.reingested)} rebuilt, "
+        f"{len(result.planned)} planned, {len(result.missing)} not found in Drive, "
+        f"{len(result.failed)} failed"
+    )
+    for book in result.reingested:
+        author_str = f" by {book['author']}" if book.get("author") else ""
+        console.print(f"  [green]+[/green] {book['title']}{author_str} ({book['book_id']}, {book['chapters']} chapters)")
+    for label, file_name in result.planned:
+        console.print(f"  [dim]…[/dim] {label} <- {file_name}")
+    for label in result.missing:
+        console.print(f"  [yellow]?[/yellow] {label}: no matching Drive file")
+    for label, error in result.failed:
+        console.print(f"  [red]x[/red] {label}: {error}")
+
+    if result.failed or result.missing:
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()

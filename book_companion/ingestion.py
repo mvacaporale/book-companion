@@ -57,6 +57,7 @@ def ingest_book(
     max_workers: int = 2,
     skip_summary: bool = False,
     drive_file_id: Optional[str] = None,
+    replace_book_id: Optional[str] = None,
     console: Optional[Any] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
 ) -> Optional[dict]:
@@ -74,6 +75,8 @@ def ingest_book(
         max_workers: Number of parallel workers for chapter summarization (default: 4)
         skip_summary: Skip the summarization step
         drive_file_id: Optional Google Drive file ID for tracking
+        replace_book_id: Re-ingest into this existing book (keeps its ID and
+            chat sessions) even if the file's hash differs, e.g. another copy
         console: Optional Rich console for CLI output
         progress_callback: Optional callback for progress updates
             Signature: (message: str, current: int, total: int) -> None
@@ -102,6 +105,13 @@ def ingest_book(
     file_hash = get_file_hash(path)
 
     existing = registry.find_by_hash(file_hash)
+    if replace_book_id:
+        if existing and existing.id != replace_book_id:
+            raise ValueError(f"{path.name} is already ingested as book {existing.id}")
+        existing = registry.get_book(replace_book_id)
+        if existing is None:
+            raise ValueError(f"Book not found: {replace_book_id}")
+        force = True
     if existing and not force:
         if console:
             console.print(f"[yellow]Book already ingested:[/yellow] {existing.display_name}")
@@ -155,9 +165,10 @@ def ingest_book(
             vector_store = get_vector_store()
 
             # Delete existing if re-ingesting
+            # (the book row is kept and upserted below: deleting it would
+            # cascade to the book's chat sessions in Postgres)
             if existing:
                 vector_store.delete_book(existing.id)
-                registry.remove_book(existing.id)
                 index_store = get_book_index_store()
                 index_store.delete(existing.id)
 
@@ -214,11 +225,11 @@ def ingest_book(
         logger.info("Storing vectors in database...")
         vector_store = get_vector_store()
 
-        # Delete existing if re-ingesting
+        # Delete existing chunks/index if re-ingesting; the book row is kept and
+        # upserted below (deleting it would cascade to its chat sessions)
         if existing:
             logger.info("Re-ingesting: deleting existing data for book %s", existing.id)
             vector_store.delete_book(existing.id)
-            registry.remove_book(existing.id)
             index_store = get_book_index_store()
             index_store.delete(existing.id)
 

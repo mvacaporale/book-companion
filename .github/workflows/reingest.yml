@@ -1,0 +1,68 @@
+name: Re-ingest books
+
+# Rebuilds already-ingested books from their Drive files (`bookrc drive reingest`)
+# so stored books pick up parser fixes (chapter numbering, metadata, chunking).
+# Book IDs and chat sessions are kept. Manual only: run from the Actions tab or
+# the GitHub app. Costs roughly $0.03 of Gemini per book.
+#
+# Repo secrets: GEMINI_API_KEY, DATABASE_URL (Neon), GWS_CREDENTIALS_JSON,
+# the same ones drive-sync.yml uses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      book_ids:
+        description: 'Space-separated book IDs (blank = every stored book)'
+        default: ''
+      dry_run:
+        description: 'Only show which Drive file each book would be rebuilt from'
+        type: boolean
+        default: true
+      title:
+        description: 'Title override (only with a single book ID)'
+        default: ''
+      author:
+        description: 'Author override (only with a single book ID)'
+        default: ''
+
+concurrency:
+  group: drive-sync  # never run alongside an auto-ingest
+  cancel-in-progress: false
+
+jobs:
+  reingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GWS_CREDENTIALS_JSON: ${{ secrets.GWS_CREDENTIALS_JSON }}
+      GOOGLE_DRIVE_FOLDER_ID: 1ip13wKCBGznT2S2HSESUseiNciJBMFCm
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$GEMINI_API_KEY" ] || [ -z "$DATABASE_URL" ] || [ -z "$GWS_CREDENTIALS_JSON" ]; then
+            echo "::error::Set GEMINI_API_KEY, DATABASE_URL and GWS_CREDENTIALS_JSON repo secrets"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Re-ingest
+        env:
+          BOOKRC_GWS_CREDENTIALS: ${{ runner.temp }}/gws-credentials.json
+          BOOK_IDS: ${{ inputs.book_ids }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TITLE: ${{ inputs.title }}
+          AUTHOR: ${{ inputs.author }}
+        run: |
+          umask 077
+          printf '%s' "$GWS_CREDENTIALS_JSON" > "$BOOKRC_GWS_CREDENTIALS"
+          args=()
+          for id in $BOOK_IDS; do args+=(--book "$id"); done
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          [ -n "$TITLE" ] && args+=(--title "$TITLE")
+          [ -n "$AUTHOR" ] && args+=(--author "$AUTHOR")
+          uv run --python 3.11 bookrc drive reingest "${args[@]}"

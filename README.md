@@ -73,6 +73,10 @@ You can also start a run by hand from the Actions tab (inputs: `dry_run`,
 `max_books`). GitHub emails you if a run fails; Apps Script emails you if the
 watcher fails.
 
+To rebuild books that are already stored after a parser fix, run the **Re-ingest
+books** workflow (Actions tab; dry run by default) or `bookrc drive reingest`.
+It re-ingests each book from its Drive file and keeps book IDs and chat sessions.
+
 One-time setup:
 
 1. Add three repo secrets (Settings → Secrets and variables → Actions). Until
