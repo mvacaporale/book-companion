@@ -46,18 +46,41 @@ Reload your shell or run `source ~/.zshrc`.
 
 ### Google Drive (optional)
 
-To ingest books straight from Google Drive, grant the server access to one
-folder — no Google account linking required:
+Drive access reuses the Google Workspace CLI (`gws`) OAuth token: export it
+once with `gws auth export --unmasked > ~/.config/gws/credentials.json`, and set
+the books folder ID (the part of the folder URL after `/folders/`) via
+`GOOGLE_DRIVE_FOLDER_ID` or `default_folder_id` in `~/.bookrc/config.json`.
+`uv run bookrc setup-drive` is a fallback personal OAuth flow.
 
-1. In Google Drive, share your books folder with the server's service account
-   email (Viewer access). For the hosted deployment this is
-   `book-companion-drive@general-477905.iam.gserviceaccount.com`.
-2. Tell the server the folder ID (the part of the folder URL after
-   `/folders/`), via the `GOOGLE_DRIVE_FOLDER_ID` environment variable.
+### Automatic ingestion from Drive
 
-New files dropped into the folder are picked up automatically. For local CLI
-use without a service account, `uv run bookrc setup-drive` walks through a
-personal OAuth flow instead.
+Drop a book in the Drive books folder and it's ingested within about 5–10
+minutes, with nothing running on your own machines:
+
+1. `drive-watcher/Code.gs`, a Google Apps Script, checks the folder every 5
+   minutes. When its contents change, it starts the `drive-sync.yml` workflow.
+2. The workflow runs `bookrc drive sync` from `main`. It skips files that are
+   already in the library (the Drive checksum matches a stored file hash, or
+   the filename matches an existing title) and ingests up to 5 new books into
+   Neon, about $0.03 each. A daily run at 10:00 UTC is a backstop in case the
+   watcher missed a change.
+
+You can also start a run by hand from the Actions tab (inputs: `dry_run`,
+`max_books`). GitHub emails you if a run fails; Apps Script emails you if the
+watcher fails.
+
+One-time setup:
+
+1. Add three repo secrets (Settings → Secrets and variables → Actions). Until
+   they exist, the workflow skips with a warning.
+
+   | Secret | Value |
+   |--------|-------|
+   | `GEMINI_API_KEY` | Same key as `~/.bookrc/mcp.env` (Proton Pass `GEMINI_API_KEY`) |
+   | `DATABASE_URL` | Neon connection string (Proton Pass `BOOKRC_DATABASE_URL`) |
+   | `GWS_CREDENTIALS_JSON` | Contents of `~/.config/gws/credentials.json` |
+
+2. Set up the watcher: follow [drive-watcher/README.md](drive-watcher/README.md).
 
 ## Usage
 

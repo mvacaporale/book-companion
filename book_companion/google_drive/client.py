@@ -23,6 +23,7 @@ class DriveFile:
     mime_type: str
     size: Optional[int] = None
     modified_time: Optional[str] = None
+    md5_checksum: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -220,7 +221,7 @@ class GoogleDriveClient:
                 .list(
                     q=query,
                     spaces="drive",
-                    fields="nextPageToken, files(id, name, mimeType, size, modifiedTime)",
+                    fields="nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum)",
                     pageToken=page_token,
                     pageSize=100,
                 )
@@ -241,6 +242,7 @@ class GoogleDriveClient:
                         mime_type=item["mimeType"],
                         size=int(item.get("size", 0)) if item.get("size") else None,
                         modified_time=item.get("modifiedTime"),
+                        md5_checksum=item.get("md5Checksum"),
                     )
                 )
 

@@ -11,6 +11,7 @@ book_companion/
 ├── cli.py                 # Click CLI commands (incl. stats command)
 ├── models.py              # Pydantic data models (incl. token tracking)
 ├── ingestion.py           # Reusable book ingestion logic
+├── drive_sync.py          # Auto-ingest new books from the Drive folder
 ├── parsers/               # Book format parsers
 │   ├── base.py            # BookParser ABC, get_parser()
 │   ├── pdf_parser.py      # PyMuPDF-based PDF parser
@@ -171,6 +172,24 @@ Allows searching and ingesting books directly from Google Drive.
 | `~/.bookrc/mcp.env` | MCP launch env — holds only `pass://` refs (no secrets) |
 | `~/.bookrc/downloads/` | Downloaded book files from Drive |
 
+### Automatic ingestion (Drive watcher → GitHub Actions)
+
+`drive-watcher/Code.gs` (Google Apps Script, user-installed at script.google.com,
+not deployed from the repo) fingerprints the books folder's file IDs every 5
+minutes and, on change, dispatches `.github/workflows/drive-sync.yml` using a
+fine-grained token (`GITHUB_TOKEN` script property, Actions read/write on this
+repo only). The workflow also runs daily at 10:00 UTC as a backstop, and by hand
+(`dry_run`, `max_books` inputs). It runs `bookrc drive sync` from `main` (merge =
+deploy) with repo secrets `GEMINI_API_KEY`, `DATABASE_URL`, `GWS_CREDENTIALS_JSON`,
+and skips with a warning without them. `drive_sync.sync_drive_folder` treats a
+Drive file as already ingested when its Drive `md5Checksum` equals a book's
+`file_hash`, or its cleaned filename fuzzy-matches a title (>= 80, same rule as
+`find_book_in_drive`), and ingests at most 5 new books per run. Per-book
+failures don't stop the run but exit non-zero, so GitHub emails the user.
+Drive push notifications were rejected (need a public HTTPS endpoint, channels
+expire), as were a miciato timer (user wants it self-contained in the project)
+and Inngest (needs a hosted endpoint).
+
 ### Workflow
 
 When a user asks about a book that isn't ingested:
@@ -215,6 +234,7 @@ uv run bookrc setup-drive            # One-time OAuth setup
 uv run bookrc drive search "Atomic Habits"  # Search Drive for books
 uv run bookrc drive list             # List all book files in Drive
 uv run bookrc drive ingest <file_id> # Download and ingest from Drive
+uv run bookrc drive sync --dry-run   # List Drive books not ingested yet (drop flag to ingest)
 
 # MCP Server
 mcp dev book_companion/mcp/server.py # Test with MCP inspector
@@ -377,7 +397,7 @@ OAuth 2.1 authentication is fully implemented but currently **disabled** due to 
 - Thematic retrieval using summaries first
 - Section-level summarization (H2/H3)
 - Multi-book session persistence
-- Google Drive sync detection (check if Drive file has been updated)
+- Google Drive sync detection for *changed* files (new files are auto-ingested within ~10 minutes; edits to an already-ingested file are not)
 
 ## Cloud Run Configuration (RETIRED 2026-09-14)
 
