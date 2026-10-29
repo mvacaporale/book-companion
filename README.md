@@ -76,7 +76,8 @@ watcher fails.
 To rebuild books that are already stored after a parser fix, run the **Re-ingest
 books** workflow (Actions tab; dry run by default) or `bookrc drive reingest`.
 It also runs by itself: a dry run on any PR that changes `reingest.yml`, and a
-real run of every book when that change merges.
+real run of the books listed in its `REINGEST_BOOKS` (blank = all) when that
+change merges.
 It re-ingests each book from its Drive file and keeps book IDs and chat sessions.
 
 One-time setup:
