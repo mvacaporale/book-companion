@@ -35,6 +35,9 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GWS_CREDENTIALS_JSON: ${{ secrets.GWS_CREDENTIALS_JSON }}
       GOOGLE_DRIVE_FOLDER_ID: 1ip13wKCBGznT2S2HSESUseiNciJBMFCm
+      # Books added to Drive before this were deliberately left un-ingested
+      # (2026-10-29 backlog of 41); only books added after it are synced.
+      DRIVE_SYNC_SINCE: '2026-10-29T00:30:00Z'
     steps:
       - name: Check secrets
         id: secrets

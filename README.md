@@ -64,6 +64,10 @@ minutes, with nothing running on your own machines:
    the filename matches an existing title) and ingests up to 5 new books into
    Neon, about $0.03 each. A daily run at 10:00 UTC is a backstop in case the
    watcher missed a change.
+   Books added to Drive before 2026-10-29 00:30 UTC are skipped on purpose
+   (`DRIVE_SYNC_SINCE` in the workflow), so the older backlog stays out. A file
+   *moved* into the folder keeps its original Drive creation date, so an old
+   file moved in is skipped too; ingest those with `bookrc drive ingest <id>`.
 
 You can also start a run by hand from the Actions tab (inputs: `dry_run`,
 `max_books`). GitHub emails you if a run fails; Apps Script emails you if the

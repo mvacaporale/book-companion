@@ -103,3 +103,30 @@ def test_listing_requests_md5_checksum():
     files = client._list_book_files("folder")
     assert files[0].md5_checksum == "abc"
     assert "md5Checksum" in service.files.return_value.list.call_args.kwargs["fields"]
+
+
+class TestAddedSinceCutoff:
+    def test_skips_files_added_before_cutoff(self, temp_dir):
+        from datetime import datetime, timezone
+
+        old = _drive_file("Old.pdf", "h1")
+        old.created_time = "2026-09-08T06:11:37.336Z"
+        new = _drive_file("New.pdf", "h2")
+        new.created_time = "2026-10-30T01:00:00.000Z"
+        client = _client([old, new])
+        cutoff = datetime(2026, 10, 29, 0, 30, tzinfo=timezone.utc)
+        result = sync_drive_folder(
+            client, [], MagicMock(side_effect=_ingest_ok), temp_dir, added_since=cutoff
+        )
+        assert result.older_than_cutoff == 1
+        assert [b["title"] for b in result.ingested] == ["New"]
+
+    def test_listing_requests_created_time(self):
+        client = GoogleDriveClient()
+        service = MagicMock()
+        service.files.return_value.list.return_value.execute.return_value = {
+            "files": [{"id": "1", "name": "A.pdf", "mimeType": "application/pdf",
+                       "createdTime": "2026-10-30T01:00:00Z"}]
+        }
+        client._service = service
+        assert client._list_book_files("folder")[0].created_time == "2026-10-30T01:00:00Z"

@@ -975,16 +975,27 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
 @click.option("--max-books", default=5, help="Most books to ingest in one run (default: 5)")
 @click.option("--dry-run", is_flag=True, help="List new books without ingesting them")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step")
-def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_summary: bool):
+@click.option("--added-since", envvar="DRIVE_SYNC_SINCE",
+              help="Skip files added to Drive before this UTC time, e.g. 2026-10-29T00:30:00Z")
+def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_summary: bool,
+               added_since: Optional[str]):
     """Ingest every book in the Drive folder that isn't ingested yet.
 
     Exits non-zero if Drive is unreachable or any book fails, so a
     failed workflow run shows up red.
     """
+    from datetime import datetime, timezone
+
     from book_companion.drive_sync import sync_drive_folder
     from book_companion.google_drive.auth import verify_drive_access
     from book_companion.ingestion import ingest_book
     from book_companion.storage import get_book_registry_store
+
+    cutoff = None
+    if added_since:
+        cutoff = datetime.fromisoformat(added_since.replace("Z", "+00:00"))
+        if cutoff.tzinfo is None:
+            cutoff = cutoff.replace(tzinfo=timezone.utc)
 
     access_error = verify_drive_access(folder_id)
     if access_error:
@@ -1000,11 +1011,13 @@ def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_sum
         max_books=max_books,
         dry_run=dry_run,
         skip_summary=skip_summary,
+        added_since=cutoff,
     )
 
     console.print()
     console.print(
-        f"Drive sync: {result.seen} in folder, {result.already_ingested} already ingested, "
+        f"Drive sync: {result.seen} in folder, {result.older_than_cutoff} added before cutoff, "
+        f"{result.already_ingested} already ingested, "
         f"{len(result.ingested)} ingested, {len(result.failed)} failed, "
         f"{len(result.pending)} {'new' if dry_run else 'left for next run'}"
     )
