@@ -141,6 +141,9 @@ uv run bookrc info abc123
 # View the navigation index (debugging)
 uv run bookrc index abc123
 
+# Fix a wrong title or author without re-ingesting
+uv run bookrc edit abc123 --title "Affluence Without Abundance" --author "James Suzman"
+
 # Delete a book and all its data
 uv run bookrc delete abc123
 ```

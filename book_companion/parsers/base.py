@@ -38,8 +38,18 @@ class BookParser(ABC):
         pass
 
     def _extract_title_from_path(self, file_path: Path) -> str:
-        """Extract a title from the file name."""
-        return file_path.stem.replace("_", " ").replace("-", " ").title()
+        """Extract a title from the file name.
+
+        Drops download-site tags like "(z-library.sk, 1lib.sk)", a trailing
+        "(Author Name)" and "..." truncation marks.
+        """
+        name = file_path.stem.replace("_", " ")
+        name = re.sub(r"\s*\([^)]*\b(?:z-?lib|1lib|libgen|anna'?s archive)[^)]*\)", "", name, flags=re.I)
+        name = re.sub(r"\s*\([^()]*\)\s*$", "", name)
+        name = re.sub(r"\s*(?:\.\.\.|…)\s*$", "", name)
+        name = re.sub(r"(?<=\w)-(?=\w)", " ", name) if " " not in name else name
+        name = " ".join(name.split())
+        return name.title() if name.islower() else name
 
 
 # Metadata values PDF/EPUB tools leave behind instead of a real title/author.

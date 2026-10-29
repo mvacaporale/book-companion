@@ -78,3 +78,14 @@ jobs:
           [ -n "$TITLE" ] && args+=(--title "$TITLE")
           [ -n "$AUTHOR" ] && args+=(--author "$AUTHOR")
           uv run --python 3.11 bookrc drive reingest "${args[@]}"
+
+      # One-off metadata the files themselves get wrong (miciato-app#11). Runs
+      # after the merge-time re-ingest; `bookrc edit` is idempotent.
+      - name: Metadata fixes
+        if: github.event_name == 'push'
+        run: |
+          uv run --python 3.11 bookrc edit d0a6b25b \
+            --title "Affluence Without Abundance: The Disappearing World of the Bushmen" \
+            --author "James Suzman"
+          uv run --python 3.11 bookrc edit 9626565b --author "Jal Mehta, Sarah Fine"
+          uv run --python 3.11 bookrc list books

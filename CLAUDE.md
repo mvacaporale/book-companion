@@ -93,7 +93,7 @@ book_companion/
 - Chapters are numbered by `number_chapters()` (`parsers/base.py`): if at least two sections carry explicit, increasing numbers ("CHAPTER 12", "12. Title", "Chapter XII", "Twelve"), those keep them and unnumbered sections are numbered after the last chapter; otherwise 1..N. Numbers must stay unique (the summarizer keys on them).
 - EPUBs are read in spine order. PDF chapters end at the next TOC entry, even a skipped one, so notes/index aren't glued onto the last chapter.
 - `clean_metadata_value()` drops placeholder titles/authors (`[No data]`, `Unknown`, digits-only) before they're stored.
-- Books ingested before these rules (2026-10-29) keep their old numbers and metadata until re-ingested with `bookrc drive reingest` (`reingest.yml`: dry run on a PR that touches the workflow file, a real run of every book when such a change merges to main, or by hand from Actions). It finds each book's Drive file (checksum, else title match) and rebuilds it in place via `ingest_book(replace_book_id=...)`.
+- Books ingested before these rules (2026-10-29) keep their old numbers and metadata until re-ingested with `bookrc drive reingest` (`reingest.yml`: dry run on a PR that touches the workflow file, a real run of every book when such a change merges to main, or by hand from Actions). It finds each book's Drive file (checksum, else title match) and rebuilds it in place via `ingest_book(replace_book_id=...)`; books with no Drive file (ingested from a local copy on the Mac) are listed and skipped, so re-ingest those on the Mac with `bookrc ingest <path> --force`.
 - Re-ingesting never deletes the `books` row (it upserts), because in Postgres that cascades to the book's chat sessions.
 - `EmbeddingClient` - Gemini text-embedding-004, 768 dimensions
 - `Summarizer` - Hierarchical summarization with configurable model
@@ -235,6 +235,7 @@ uv run bookrc list books             # List books (shows index status)
 uv run bookrc list sessions <id>     # List sessions for a book
 uv run bookrc info <book_id>         # Book details + narratives + token usage
 uv run bookrc index <book_id>        # Show navigation index (debug)
+uv run bookrc edit <book_id> -t "Title" -a "Author"  # Fix metadata without re-ingesting
 uv run bookrc delete <book_id>       # Delete book and all data
 
 # Token Usage & Costs

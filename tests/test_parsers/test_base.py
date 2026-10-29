@@ -48,3 +48,14 @@ def test_unnumbered_books_are_numbered_in_order() -> None:
 def test_inconsistent_numbers_fall_back_to_order() -> None:
     chapters = number_chapters(_chapters(("Chapter 2", "..."), ("Chapter 1", "..."), ("Chapter 3", "...")))
     assert [c.number for c in chapters] == [1, 2, 3]
+
+
+def test_filename_title_drops_download_tags() -> None:
+    from pathlib import Path
+
+    from book_companion.parsers.pdf_parser import PDFParser
+
+    title = PDFParser()._extract_title_from_path
+    assert title(Path("Grit (Angela Duckworth) (z-library.sk, 1lib.sk, z-lib.sk).epub")) == "Grit"
+    assert title(Path("affluence-without-abundance.pdf")) == "Affluence Without Abundance"
+    assert title(Path("INSPIRED How to Create... (z-library.sk).epub")) == "INSPIRED How to Create"

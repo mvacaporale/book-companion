@@ -527,6 +527,35 @@ def delete(book_id: str, yes: bool):
 
 @cli.command()
 @click.argument("book_id")
+@click.option("--title", "-t", help="New title")
+@click.option("--author", "-a", help="New author")
+def edit(book_id: str, title: Optional[str], author: Optional[str]):
+    """Fix a book's title or author without re-ingesting."""
+    if not title and not author:
+        console.print("[red]Error:[/red] Give --title and/or --author.")
+        sys.exit(1)
+
+    registry = get_book_registry_store()
+    book = registry.get_book(book_id)
+    if book is None:
+        console.print(f"[red]Error:[/red] Book not found: {book_id}")
+        sys.exit(1)
+
+    updates = {k: v for k, v in {"title": title, "author": author}.items() if v}
+    registry.add_book(book.model_copy(update=updates))  # upsert by ID
+
+    index_store = get_book_index_store()
+    book_index = index_store.load(book_id)
+    if book_index:
+        index_store.save(book_index.model_copy(update=updates))
+
+    console.print(f"[green]Updated[/green] {book_id}: {book.display_name} -> "
+                  f"{updates.get('title', book.title)}"
+                  + (f" by {updates.get('author', book.author)}" if updates.get('author', book.author) else ""))
+
+
+@cli.command()
+@click.argument("book_id")
 def index(book_id: str):
     """Show the book's navigation index (for debugging)."""
     registry = get_book_registry_store()
@@ -1045,8 +1074,8 @@ def drive_reingest(book_ids: tuple[str, ...], folder_id: Optional[str], dry_run:
     """Rebuild ingested books from their Drive files, keeping IDs and chat sessions.
 
     Use after a parser change so stored books pick up the new chapter
-    numbering, metadata and chunking. Exits non-zero if any book fails
-    or has no Drive file.
+    numbering, metadata and chunking. Exits non-zero if any book fails;
+    books with no Drive file are listed and skipped.
     """
     from book_companion.drive_sync import reingest_books
     from book_companion.google_drive.auth import verify_drive_access
@@ -1097,7 +1126,8 @@ def drive_reingest(book_ids: tuple[str, ...], folder_id: Optional[str], dry_run:
     for label, error in result.failed:
         console.print(f"  [red]x[/red] {label}: {error}")
 
-    if result.failed or result.missing:
+    # Books with no Drive file (ingested from a local copy) are reported, not fatal
+    if result.failed:
         sys.exit(1)
 
 
