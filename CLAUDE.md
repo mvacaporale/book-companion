@@ -86,6 +86,15 @@ book_companion/
 ### Processing
 
 - `Chunker` - 1500 char chunks with 200 char overlap, chapter-aware
+- `quality.py` - `is_non_content_title()` (front/back matter, matched as whole titles) and `is_low_value_chunk()` (index pages, endnotes, bare headings). Both vector stores over-fetch 3x and drop low-value chunks in `query()`, which also returns `distances`.
+
+### Parsers
+
+- Chapters are numbered by `number_chapters()` (`parsers/base.py`): if at least two sections carry explicit, increasing numbers ("CHAPTER 12", "12. Title", "Chapter XII", "Twelve"), those keep them and unnumbered sections are numbered after the last chapter; otherwise 1..N. Numbers must stay unique (the summarizer keys on them).
+- EPUBs are read in spine order. PDF chapters end at the next TOC entry, even a skipped one, so notes/index aren't glued onto the last chapter.
+- `clean_metadata_value()` drops placeholder titles/authors (`[No data]`, `Unknown`, digits-only) before they're stored.
+- Books ingested before these rules (2026-10-29) keep their old numbers and metadata until re-ingested with `bookrc drive reingest` (`reingest.yml`: dry run on a PR that touches the workflow file, a real run of every book when such a change merges to main, or by hand from Actions). It finds each book's Drive file (checksum, else title match) and rebuilds it in place via `ingest_book(replace_book_id=...)`; books with no Drive file (ingested from a local copy on the Mac) are listed and skipped, so re-ingest those on the Mac with `bookrc ingest <path> --force`.
+- Re-ingesting never deletes the `books` row (it upserts), because in Postgres that cascades to the book's chat sessions.
 - `EmbeddingClient` - Gemini text-embedding-004, 768 dimensions
 - `Summarizer` - Hierarchical summarization with configurable model
 
@@ -226,6 +235,7 @@ uv run bookrc list books             # List books (shows index status)
 uv run bookrc list sessions <id>     # List sessions for a book
 uv run bookrc info <book_id>         # Book details + narratives + token usage
 uv run bookrc index <book_id>        # Show navigation index (debug)
+uv run bookrc edit <book_id> -t "Title" -a "Author"  # Fix metadata without re-ingesting
 uv run bookrc delete <book_id>       # Delete book and all data
 
 # Token Usage & Costs
@@ -236,8 +246,9 @@ uv run bookrc stats <book_id>        # Show usage for specific book
 uv run bookrc setup-drive            # One-time OAuth setup
 uv run bookrc drive search "Atomic Habits"  # Search Drive for books
 uv run bookrc drive list             # List all book files in Drive
-uv run bookrc drive ingest <file_id> # Download and ingest from Drive
+uv run bookrc drive ingest <file_id> # Download and ingest from Drive (--force to re-ingest)
 uv run bookrc drive sync --dry-run   # List Drive books not ingested yet (drop flag to ingest)
+uv run bookrc drive reingest --dry-run  # Rebuild stored books from Drive in place (--book ID, repeatable)
 
 # MCP Server
 mcp dev book_companion/mcp/server.py # Test with MCP inspector
@@ -265,7 +276,7 @@ uv run python -m book_companion.mcp.server  # Run server directly
 - Chunk size: 1500 characters (~300-400 tokens)
 - Chunk overlap: 200 characters
 - Embedding model: text-embedding-004 (768 dimensions)
-- Retrieval: Top 8 chunks by cosine similarity
+- Retrieval: Top 8 chunks by cosine similarity, low-value chunks (index, endnotes, bare headings) dropped
 - Context format: Includes chapter/page citations
 - System prompt: Includes full book navigation index (when available)
 
@@ -306,7 +317,7 @@ The MCP (Model Context Protocol) server enables Claude Desktop and other MCP cli
 | Tool | Description |
 |------|-------------|
 | `list_books` | List all ingested books with metadata. Optional `topic` filter for fuzzy matching against themes/topics |
-| `search_books` | Semantic search across books (supports multi-book) |
+| `search_books` | Semantic search across books; `n_results` is the overall limit, results sorted by `score` |
 | `get_book_index` | Full navigation index with summaries |
 | `get_chapter_summary` | Specific chapter summary and narratives |
 | `get_narratives` | Stories, studies, examples (filterable by type) |

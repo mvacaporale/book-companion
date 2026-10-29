@@ -198,6 +198,7 @@ class RetrievedContext(BaseModel):
     chunks: list[Chunk]
     formatted_context: str
     chunk_ids: list[str]
+    distances: list[float] = Field(default_factory=list)  # cosine distance per chunk
 
 
 # =============================================================================

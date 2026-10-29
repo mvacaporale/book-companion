@@ -9,7 +9,8 @@ import ebooklib
 from ebooklib import epub
 
 from book_companion.models import BookFormat, Chapter, ParsedBook
-from .base import BookParser
+from book_companion.processing.quality import is_non_content_title
+from .base import BookParser, clean_metadata_value, number_chapters
 
 
 class EPUBParser(BookParser):
@@ -26,15 +27,14 @@ class EPUBParser(BookParser):
         book = epub.read_epub(str(file_path), options={"ignore_ncx": True})
 
         # Extract metadata
-        title = self._get_metadata(book, "title") or self._extract_title_from_path(file_path)
-        author = self._get_metadata(book, "creator")
+        title = clean_metadata_value(self._get_metadata(book, "title")) or self._extract_title_from_path(file_path)
+        author = clean_metadata_value(self._get_metadata(book, "creator"))
 
-        # Extract chapters from spine
+        # Extract chapters in reading (spine) order
         chapters = []
         full_text_parts = []
-        chapter_num = 0
 
-        for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+        for item in self._documents_in_reading_order(book):
             content = item.get_content()
             soup = BeautifulSoup(content, "lxml")
 
@@ -52,16 +52,16 @@ class EPUBParser(BookParser):
             if self._is_skip_section(chapter_title):
                 continue
 
-            chapter_num += 1
             chapters.append(
                 Chapter(
-                    number=chapter_num,
+                    number=len(chapters) + 1,
                     title=chapter_title,
                     content=text.strip(),
                 )
             )
 
         full_text = "\n\n".join(full_text_parts)
+        number_chapters(chapters)
 
         # If no chapters found, create one from full text
         if not chapters:
@@ -80,6 +80,21 @@ class EPUBParser(BookParser):
             format=self.format,
             raw_text=full_text,
         )
+
+    def _documents_in_reading_order(self, book: epub.EpubBook) -> list:
+        """Spine items first (the reader's order), then any unlisted documents.
+
+        Manifest order, which get_items_of_type returns, often puts notes or
+        front matter in odd places.
+        """
+        documents = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
+        spine = []
+        for entry in book.spine:
+            item_id = entry[0] if isinstance(entry, tuple) else entry
+            item = book.get_item_with_id(item_id)
+            if item is not None and item in documents and item not in spine:
+                spine.append(item)
+        return spine or documents
 
     def _get_metadata(self, book: epub.EpubBook, field: str) -> Optional[str]:
         """Extract a metadata field from the EPUB."""
@@ -130,16 +145,4 @@ class EPUBParser(BookParser):
         if not title:
             return False
 
-        title_lower = title.lower()
-        skip_patterns = [
-            "copyright",
-            "table of contents",
-            "toc",
-            "cover",
-            "title page",
-            "about the author",
-            "acknowledgment",
-            "dedication",
-        ]
-
-        return any(pattern in title_lower for pattern in skip_patterns)
+        return is_non_content_title(title)

@@ -130,3 +130,36 @@ class TestAddedSinceCutoff:
         }
         client._service = service
         assert client._list_book_files("folder")[0].created_time == "2026-10-30T01:00:00Z"
+
+
+class TestReingestBooks:
+    def test_rebuilds_each_book_in_place(self, temp_dir):
+        from book_companion.drive_sync import reingest_books
+
+        books = [_book("Atomic Habits", "abc"), _book("Situated", "old")]
+        client = _client([
+            _drive_file("Renamed copy.pdf", "abc"),  # checksum match
+            _drive_file("Situated - Mind in World.epub", "new", "application/epub+zip"),  # title match
+            _drive_file("Unrelated.pdf", "zzz"),
+        ])
+        ingest = MagicMock(side_effect=_ingest_ok)
+        result = reingest_books(client, books, ingest, temp_dir)
+
+        assert len(result.reingested) == 2 and not result.missing and not result.failed
+        replaced = {c.kwargs["replace_book_id"]: c.kwargs["path"].name for c in ingest.call_args_list}
+        assert replaced == {books[0].id: "Renamed copy.pdf", books[1].id: "Situated - Mind in World.epub"}
+
+    def test_reports_books_missing_from_drive(self, temp_dir):
+        from book_companion.drive_sync import reingest_books
+
+        book = _book("Gone", "x")
+        result = reingest_books(_client([]), [book], MagicMock(), temp_dir)
+        assert result.missing == [f"Gone ({book.id})"]
+
+    def test_dry_run_plans_without_downloading(self, temp_dir):
+        from book_companion.drive_sync import reingest_books
+
+        client = _client([_drive_file("a.pdf", "abc")])
+        result = reingest_books(client, [_book("Atomic Habits", "abc")], MagicMock(), temp_dir, dry_run=True)
+        assert [f for _, f in result.planned] == ["a.pdf"]
+        client.download_file.assert_not_called()

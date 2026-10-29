@@ -7,7 +7,8 @@ from typing import Optional
 import pymupdf
 
 from book_companion.models import BookFormat, Chapter, ParsedBook
-from .base import BookParser
+from book_companion.processing.quality import is_non_content_title
+from .base import BookParser, clean_metadata_value, number_chapters
 
 
 class PDFParser(BookParser):
@@ -29,8 +30,8 @@ class PDFParser(BookParser):
 
         # Extract metadata
         metadata = doc.metadata
-        title = metadata.get("title") or self._extract_title_from_path(file_path)
-        author = metadata.get("author") or None
+        title = clean_metadata_value(metadata.get("title")) or self._extract_title_from_path(file_path)
+        author = clean_metadata_value(metadata.get("author"))
 
         # Get all text first
         full_text_parts = []
@@ -87,26 +88,23 @@ class PDFParser(BookParser):
         if not toc:
             return []
 
-        # Filter to top-level TOC entries (level 1) that look like chapters
-        chapter_entries = []
-        for level, title, page in toc:
-            if level == 1 and self._is_chapter_title(title):
-                chapter_entries.append((title, page))
+        # Use top-level TOC entries (level 1); fall back to levels 1-2
+        max_level = 1
+        if not any(level == 1 and self._is_chapter_title(title) for level, title, _ in toc):
+            max_level = 2
+        entries = [(title, page) for level, title, page in toc if level <= max_level]
+        chapter_indices = [i for i, (title, _) in enumerate(entries) if self._is_chapter_title(title)]
 
-        if not chapter_entries:
-            # Try level 2 if level 1 is empty
-            for level, title, page in toc:
-                if level <= 2 and self._is_chapter_title(title):
-                    chapter_entries.append((title, page))
-
-        if len(chapter_entries) < 2:
+        if len(chapter_indices) < 2:
             return []
 
         chapters = []
-        for i, (title, start_page) in enumerate(chapter_entries):
-            # Determine end page
-            if i < len(chapter_entries) - 1:
-                end_page = chapter_entries[i + 1][1] - 1
+        for i in chapter_indices:
+            title, start_page = entries[i]
+            # A chapter ends where the next TOC entry starts, even a skipped one,
+            # so notes and the index don't get glued onto the last chapter.
+            if i < len(entries) - 1:
+                end_page = max(start_page, entries[i + 1][1] - 1)
             else:
                 end_page = len(doc)
 
@@ -118,7 +116,7 @@ class PDFParser(BookParser):
 
             chapters.append(
                 Chapter(
-                    number=i + 1,
+                    number=len(chapters) + 1,
                     title=title.strip(),
                     content=chapter_text.strip(),
                     start_page=start_page,
@@ -126,7 +124,7 @@ class PDFParser(BookParser):
                 )
             )
 
-        return chapters
+        return number_chapters(chapters)
 
     def _is_chapter_title(self, title: str) -> bool:
         """Check if a TOC entry looks like a chapter title."""
@@ -145,6 +143,9 @@ class PDFParser(BookParser):
         for pattern in chapter_patterns:
             if re.match(pattern, title_lower):
                 return True
+
+        if is_non_content_title(title):
+            return False
 
         # Also accept titles that aren't obviously non-chapters
         skip_patterns = [

@@ -527,6 +527,35 @@ def delete(book_id: str, yes: bool):
 
 @cli.command()
 @click.argument("book_id")
+@click.option("--title", "-t", help="New title")
+@click.option("--author", "-a", help="New author")
+def edit(book_id: str, title: Optional[str], author: Optional[str]):
+    """Fix a book's title or author without re-ingesting."""
+    if not title and not author:
+        console.print("[red]Error:[/red] Give --title and/or --author.")
+        sys.exit(1)
+
+    registry = get_book_registry_store()
+    book = registry.get_book(book_id)
+    if book is None:
+        console.print(f"[red]Error:[/red] Book not found: {book_id}")
+        sys.exit(1)
+
+    updates = {k: v for k, v in {"title": title, "author": author}.items() if v}
+    registry.add_book(book.model_copy(update=updates))  # upsert by ID
+
+    index_store = get_book_index_store()
+    book_index = index_store.load(book_id)
+    if book_index:
+        index_store.save(book_index.model_copy(update=updates))
+
+    console.print(f"[green]Updated[/green] {book_id}: {book.display_name} -> "
+                  f"{updates.get('title', book.title)}"
+                  + (f" by {updates.get('author', book.author)}" if updates.get('author', book.author) else ""))
+
+
+@cli.command()
+@click.argument("book_id")
 def index(book_id: str):
     """Show the book's navigation index (for debugging)."""
     registry = get_book_registry_store()
@@ -915,8 +944,9 @@ def drive_list(folder_id: Optional[str]):
               help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
 @click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step")
+@click.option("--force", "-f", is_flag=True, help="Re-ingest even if already ingested (keeps the book ID)")
 def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
-                 model: str, workers: int, skip_summary: bool):
+                 model: str, workers: int, skip_summary: bool, force: bool):
     """Download and ingest a book from Google Drive.
 
     FILE_ID is the Google Drive file ID (shown in search/list results).
@@ -957,6 +987,7 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
             model=model,
             max_workers=workers,
             skip_summary=skip_summary,
+            force=force,
             drive_file_id=file_id,
             console=console,
         )
@@ -1028,6 +1059,74 @@ def drive_sync(folder_id: Optional[str], max_books: int, dry_run: bool, skip_sum
     for name, error in result.failed:
         console.print(f"  [red]x[/red] {name}: {error}")
 
+    if result.failed:
+        sys.exit(1)
+
+
+@drive.command("reingest")
+@click.option("--book", "-b", "book_ids", multiple=True, help="Book ID to re-ingest (repeatable; default: all)")
+@click.option("--folder", "-f", "folder_id", help="Folder ID to look in (default: configured folder)")
+@click.option("--dry-run", is_flag=True, help="Show which Drive file each book would be rebuilt from")
+@click.option("--title", "-t", help="Override the title (only with a single --book)")
+@click.option("--author", "-a", help="Override the author (only with a single --book)")
+def drive_reingest(book_ids: tuple[str, ...], folder_id: Optional[str], dry_run: bool,
+                   title: Optional[str], author: Optional[str]):
+    """Rebuild ingested books from their Drive files, keeping IDs and chat sessions.
+
+    Use after a parser change so stored books pick up the new chapter
+    numbering, metadata and chunking. Exits non-zero if any book fails;
+    books with no Drive file are listed and skipped.
+    """
+    from book_companion.drive_sync import reingest_books
+    from book_companion.google_drive.auth import verify_drive_access
+    from book_companion.ingestion import ingest_book
+    from book_companion.storage import get_book_registry_store
+
+    if (title or author) and len(book_ids) != 1:
+        console.print("[red]Error:[/red] --title/--author need exactly one --book.")
+        sys.exit(1)
+
+    books = get_book_registry_store().list_books()
+    if book_ids:
+        unknown = set(book_ids) - {b.id for b in books}
+        if unknown:
+            console.print(f"[red]Error:[/red] Unknown book ID(s): {', '.join(sorted(unknown))}")
+            sys.exit(1)
+        books = [b for b in books if b.id in book_ids]
+
+    access_error = verify_drive_access(folder_id)
+    if access_error:
+        console.print(f"[red]Error:[/red] {access_error}")
+        sys.exit(1)
+
+    result = reingest_books(
+        client=GoogleDriveClient(),
+        books=books,
+        ingest_fn=lambda **kw: ingest_book(console=console, **kw),
+        downloads_dir=Path.home() / ".bookrc" / "downloads",
+        folder_id=folder_id,
+        dry_run=dry_run,
+        title=title,
+        author=author,
+    )
+
+    console.print()
+    console.print(
+        f"Re-ingest: {len(books)} books, {len(result.reingested)} rebuilt, "
+        f"{len(result.planned)} planned, {len(result.missing)} not found in Drive, "
+        f"{len(result.failed)} failed"
+    )
+    for book in result.reingested:
+        author_str = f" by {book['author']}" if book.get("author") else ""
+        console.print(f"  [green]+[/green] {book['title']}{author_str} ({book['book_id']}, {book['chapters']} chapters)")
+    for label, file_name in result.planned:
+        console.print(f"  [dim]…[/dim] {label} <- {file_name}")
+    for label in result.missing:
+        console.print(f"  [yellow]?[/yellow] {label}: no matching Drive file")
+    for label, error in result.failed:
+        console.print(f"  [red]x[/red] {label}: {error}")
+
+    # Books with no Drive file (ingested from a local copy) are reported, not fatal
     if result.failed:
         sys.exit(1)
 

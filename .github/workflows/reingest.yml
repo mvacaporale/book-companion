@@ -1,0 +1,91 @@
+name: Re-ingest books
+
+# Rebuilds already-ingested books from their Drive files (`bookrc drive reingest`)
+# so stored books pick up parser fixes (chapter numbering, metadata, chunking).
+# Book IDs and chat sessions are kept. Costs roughly $0.03 of Gemini per book.
+#
+# When it runs:
+#   - by hand from the Actions tab or the GitHub app (dry run by default);
+#   - as a dry run (read-only) on a PR that changes this file;
+#   - for real, on every book, when a change to this file merges to main.
+#     So to repair all books after a parser fix, touch this file in the PR
+#     (e.g. bump REINGEST_REASON below); otherwise leave it alone.
+#
+# Repo secrets: GEMINI_API_KEY, DATABASE_URL (Neon), GWS_CREDENTIALS_JSON,
+# the same ones drive-sync.yml uses.
+
+on:
+  pull_request:
+    paths: ['.github/workflows/reingest.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/reingest.yml']
+  workflow_dispatch:
+    inputs:
+      book_ids:
+        description: 'Space-separated book IDs (blank = every stored book)'
+        default: ''
+      dry_run:
+        description: 'Only show which Drive file each book would be rebuilt from'
+        type: boolean
+        default: true
+      title:
+        description: 'Title override (only with a single book ID)'
+        default: ''
+      author:
+        description: 'Author override (only with a single book ID)'
+        default: ''
+
+concurrency:
+  group: drive-sync  # never run alongside an auto-ingest
+  cancel-in-progress: false
+
+jobs:
+  reingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GWS_CREDENTIALS_JSON: ${{ secrets.GWS_CREDENTIALS_JSON }}
+      GOOGLE_DRIVE_FOLDER_ID: 1ip13wKCBGznT2S2HSESUseiNciJBMFCm
+      REINGEST_REASON: '2026-10-29 chapter numbering, metadata and junk fixes (miciato-app#11)'
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$GEMINI_API_KEY" ] || [ -z "$DATABASE_URL" ] || [ -z "$GWS_CREDENTIALS_JSON" ]; then
+            echo "::error::Set GEMINI_API_KEY, DATABASE_URL and GWS_CREDENTIALS_JSON repo secrets"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Re-ingest
+        env:
+          BOOKRC_GWS_CREDENTIALS: ${{ runner.temp }}/gws-credentials.json
+          BOOK_IDS: ${{ inputs.book_ids }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+          TITLE: ${{ inputs.title }}
+          AUTHOR: ${{ inputs.author }}
+        run: |
+          umask 077
+          printf '%s' "$GWS_CREDENTIALS_JSON" > "$BOOKRC_GWS_CREDENTIALS"
+          args=()
+          for id in $BOOK_IDS; do args+=(--book "$id"); done
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          [ -n "$TITLE" ] && args+=(--title "$TITLE")
+          [ -n "$AUTHOR" ] && args+=(--author "$AUTHOR")
+          uv run --python 3.11 bookrc drive reingest "${args[@]}"
+
+      # One-off metadata the files themselves get wrong (miciato-app#11). Runs
+      # after the merge-time re-ingest; `bookrc edit` is idempotent.
+      - name: Metadata fixes
+        if: github.event_name == 'push'
+        run: |
+          uv run --python 3.11 bookrc edit d0a6b25b \
+            --title "Affluence Without Abundance: The Disappearing World of the Bushmen" \
+            --author "James Suzman"
+          uv run --python 3.11 bookrc edit 9626565b --author "Jal Mehta, Sarah Fine"
+          uv run --python 3.11 bookrc list books

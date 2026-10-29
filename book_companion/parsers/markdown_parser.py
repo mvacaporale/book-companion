@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Optional
 
 from book_companion.models import BookFormat, Chapter, ParsedBook
-from .base import BookParser
+from book_companion.processing.quality import is_non_content_title
+from .base import BookParser, number_chapters
 
 
 class MarkdownParser(BookParser):
@@ -25,7 +26,7 @@ class MarkdownParser(BookParser):
         title = self._extract_title(content, file_path)
 
         # Split into chapters by H1 or H2 headings
-        chapters = self._split_into_chapters(content)
+        chapters = number_chapters(self._split_into_chapters(content))
 
         # If no chapters found, create one from full content
         if not chapters:
@@ -106,11 +107,4 @@ class MarkdownParser(BookParser):
 
     def _is_skip_section(self, title: str) -> bool:
         """Check if this section should be skipped."""
-        title_lower = title.lower()
-        skip_patterns = [
-            "table of contents",
-            "toc",
-            "acknowledgment",
-            "about the author",
-        ]
-        return any(pattern in title_lower for pattern in skip_patterns)
+        return is_non_content_title(title)
