@@ -184,7 +184,10 @@ deploy) with repo secrets `GEMINI_API_KEY`, `DATABASE_URL`, `GWS_CREDENTIALS_JSO
 and skips with a warning without them. `drive_sync.sync_drive_folder` treats a
 Drive file as already ingested when its Drive `md5Checksum` equals a book's
 `file_hash`, or its cleaned filename fuzzy-matches a title (>= 80, same rule as
-`find_book_in_drive`), and ingests at most 5 new books per run. Per-book
+`find_book_in_drive`), and ingests at most 5 new books per run. Files whose Drive `createdTime` is before
+`DRIVE_SYNC_SINCE` (workflow env, `--added-since`; set to 2026-10-29T00:30:00Z because
+the user chose not to ingest the 41-book backlog) are skipped; moved-in files keep
+their old createdTime, so those need `bookrc drive ingest`. Per-book
 failures don't stop the run but exit non-zero, so GitHub emails the user.
 Drive push notifications were rejected (need a public HTTPS endpoint, channels
 expire), as were a miciato timer (user wants it self-contained in the project)

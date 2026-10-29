@@ -11,10 +11,16 @@ A Drive file counts as already ingested when either:
     rule `find_book_in_drive` uses for `is_ingested`), which covers books
     ingested from a different copy of the file before this job existed.
 
+Files added to Drive before `added_since` (Drive createdTime) are skipped, so
+the backlog that predates this job isn't ingested; the workflow sets it via
+DRIVE_SYNC_SINCE. Note a file moved into the folder keeps its original
+createdTime, so an old file moved in is skipped too (ingest it by hand).
+
 Failures are per-book and non-fatal; the caller decides the exit code.
 """
 
 import logging
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -44,6 +50,7 @@ class SyncResult:
 
     seen: int = 0
     already_ingested: int = 0
+    older_than_cutoff: int = 0
     ingested: list[dict] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)  # new files left for a later run (or dry run)
     failed: list[tuple[str, str]] = field(default_factory=list)  # (file name, error)
@@ -79,14 +86,20 @@ def sync_drive_folder(
     max_books: int = 5,
     dry_run: bool = False,
     skip_summary: bool = False,
+    added_since: Optional[datetime] = None,
 ) -> SyncResult:
     """Ingest Drive books that aren't registered yet, at most `max_books` per run."""
     result = SyncResult()
     files = client._list_book_files(folder_id)
     result.seen = len(files)
 
+    if added_since:
+        recent = [f for f in files if not _created_before(f, added_since)]
+        result.older_than_cutoff = len(files) - len(recent)
+        files = recent
+
     new_files = [f for f in files if not is_already_ingested(client, f, books)]
-    result.already_ingested = result.seen - len(new_files)
+    result.already_ingested = len(files) - len(new_files)
 
     if dry_run:
         result.pending = [f.name for f in new_files]
@@ -109,3 +122,9 @@ def sync_drive_folder(
 
     result.pending = [f.name for f in new_files[max_books:]]
     return result
+
+
+def _created_before(file: DriveFile, cutoff: datetime) -> bool:
+    if not file.created_time:
+        return False
+    return datetime.fromisoformat(file.created_time.replace("Z", "+00:00")) < cutoff
