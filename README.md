@@ -158,7 +158,12 @@ The `stats` command shows:
 
 ### Ingestion Pipeline
 
-1. **Parsing**: Books are parsed to extract text and chapter structure
+1. **Parsing**: Books are parsed to extract text and chapter structure, in reading order.
+   Chapters keep the book's own numbers ("CHAPTER 12" is chapter 12); unnumbered
+   sections like the introduction or epilogue are numbered after the last chapter.
+   Front and back matter (contents, notes, index, bibliography, acknowledgments) is
+   skipped, and placeholder metadata (`[No data]`, ID-like authors) falls back to the
+   filename for the title and to no author.
 2. **Chunking**: Text is split into ~1500 character chunks with semantic awareness
 3. **Embedding**: Chunks are embedded using Gemini's `text-embedding-004` model
 4. **Summarization**: Each chapter is summarized, extracting:
@@ -172,7 +177,10 @@ The `stats` command shows:
 ### Chat Pipeline
 
 1. **Query Embedding**: Your question is embedded
-2. **Retrieval**: Top 8 relevant chunks are retrieved via cosine similarity
+2. **Retrieval**: Top 8 relevant chunks are retrieved via cosine similarity. Index pages,
+   endnotes and bare headings are dropped at query time, so books ingested before that
+   rule existed are filtered too. The MCP `search_books` limit (`n_results`) is the total
+   across all books, best matches first.
 3. **Context Building**: Chunks + book navigation index form the context
 4. **Generation**: LLM generates a response grounded in the book content
 

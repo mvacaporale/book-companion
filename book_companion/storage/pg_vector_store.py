@@ -3,7 +3,11 @@
 from typing import Optional
 
 from book_companion.models import Chunk, ChunkMetadata, RetrievedContext
+from book_companion.processing.quality import is_low_value_chunk
 from .database import get_cursor
+
+# Fetch extra candidates so dropping index pages/endnotes still leaves n_results.
+OVERFETCH = 3
 
 
 class PgVectorStore:
@@ -97,8 +101,10 @@ class PgVectorStore:
             query_embedding: The query embedding vector
             n_results: Number of results to return
 
+        Index pages, endnotes and bare headings are dropped.
+
         Returns:
-            RetrievedContext with chunks and formatted context
+            RetrievedContext with chunks, formatted context and distances
         """
         # Format embedding as PostgreSQL vector literal
         embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
@@ -116,12 +122,17 @@ class PgVectorStore:
                 ORDER BY distance ASC
                 LIMIT %s
                 """,
-                (embedding_str, book_id, n_results),
+                (embedding_str, book_id, n_results * OVERFETCH),
             )
             rows = cur.fetchall()
 
         chunks = []
+        distances = []
         for row in rows:
+            if len(chunks) >= n_results:
+                break
+            if is_low_value_chunk(row["text"], row["chapter_title"]):
+                continue
             chunk = Chunk(
                 id=row["id"],
                 text=row["text"],
@@ -135,6 +146,7 @@ class PgVectorStore:
                 ),
             )
             chunks.append(chunk)
+            distances.append(float(row["distance"]))
 
         # Format context for LLM
         formatted_context = self._format_context(chunks)
@@ -144,6 +156,7 @@ class PgVectorStore:
             chunks=chunks,
             formatted_context=formatted_context,
             chunk_ids=chunk_ids,
+            distances=distances,
         )
 
     def _format_context(self, chunks: list[Chunk]) -> str:

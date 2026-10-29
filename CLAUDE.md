@@ -86,6 +86,14 @@ book_companion/
 ### Processing
 
 - `Chunker` - 1500 char chunks with 200 char overlap, chapter-aware
+- `quality.py` - `is_non_content_title()` (front/back matter, matched as whole titles) and `is_low_value_chunk()` (index pages, endnotes, bare headings). Both vector stores over-fetch 3x and drop low-value chunks in `query()`, which also returns `distances`.
+
+### Parsers
+
+- Chapters are numbered by `number_chapters()` (`parsers/base.py`): if at least two sections carry explicit, increasing numbers ("CHAPTER 12", "12. Title", "Chapter XII", "Twelve"), those keep them and unnumbered sections are numbered after the last chapter; otherwise 1..N. Numbers must stay unique (the summarizer keys on them).
+- EPUBs are read in spine order. PDF chapters end at the next TOC entry, even a skipped one, so notes/index aren't glued onto the last chapter.
+- `clean_metadata_value()` drops placeholder titles/authors (`[No data]`, `Unknown`, digits-only) before they're stored.
+- Books ingested before these rules (2026-10-29) keep their old numbers and metadata until re-ingested (`bookrc drive ingest <file_id> --force`, keeps the book ID).
 - `EmbeddingClient` - Gemini text-embedding-004, 768 dimensions
 - `Summarizer` - Hierarchical summarization with configurable model
 
@@ -236,7 +244,7 @@ uv run bookrc stats <book_id>        # Show usage for specific book
 uv run bookrc setup-drive            # One-time OAuth setup
 uv run bookrc drive search "Atomic Habits"  # Search Drive for books
 uv run bookrc drive list             # List all book files in Drive
-uv run bookrc drive ingest <file_id> # Download and ingest from Drive
+uv run bookrc drive ingest <file_id> # Download and ingest from Drive (--force to re-ingest)
 uv run bookrc drive sync --dry-run   # List Drive books not ingested yet (drop flag to ingest)
 
 # MCP Server
@@ -265,7 +273,7 @@ uv run python -m book_companion.mcp.server  # Run server directly
 - Chunk size: 1500 characters (~300-400 tokens)
 - Chunk overlap: 200 characters
 - Embedding model: text-embedding-004 (768 dimensions)
-- Retrieval: Top 8 chunks by cosine similarity
+- Retrieval: Top 8 chunks by cosine similarity, low-value chunks (index, endnotes, bare headings) dropped
 - Context format: Includes chapter/page citations
 - System prompt: Includes full book navigation index (when available)
 
@@ -306,7 +314,7 @@ The MCP (Model Context Protocol) server enables Claude Desktop and other MCP cli
 | Tool | Description |
 |------|-------------|
 | `list_books` | List all ingested books with metadata. Optional `topic` filter for fuzzy matching against themes/topics |
-| `search_books` | Semantic search across books (supports multi-book) |
+| `search_books` | Semantic search across books; `n_results` is the overall limit, results sorted by `score` |
 | `get_book_index` | Full navigation index with summaries |
 | `get_chapter_summary` | Specific chapter summary and narratives |
 | `get_narratives` | Stories, studies, examples (filterable by type) |

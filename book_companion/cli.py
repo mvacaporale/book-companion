@@ -915,8 +915,9 @@ def drive_list(folder_id: Optional[str]):
               help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
 @click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step")
+@click.option("--force", "-f", is_flag=True, help="Re-ingest even if already ingested (keeps the book ID)")
 def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
-                 model: str, workers: int, skip_summary: bool):
+                 model: str, workers: int, skip_summary: bool, force: bool):
     """Download and ingest a book from Google Drive.
 
     FILE_ID is the Google Drive file ID (shown in search/list results).
@@ -957,6 +958,7 @@ def drive_ingest(file_id: str, title: Optional[str], author: Optional[str],
             model=model,
             max_workers=workers,
             skip_summary=skip_summary,
+            force=force,
             drive_file_id=file_id,
             console=console,
         )

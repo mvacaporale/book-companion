@@ -164,9 +164,11 @@ async def search_books(
     Args:
         query: The search query
         book_ids: Optional list of book IDs to search. If omitted, searches all books.
-        n_results: Number of results per book (default 8)
+        n_results: Maximum number of results in total, across all books (default 8)
 
-    Returns JSON array of matching chunks with text, chapter, page, and book info.
+    Returns JSON array of the closest matching chunks, best first, with text,
+    chapter, page, and book info. Index pages, endnotes and bare headings are
+    left out.
     """
     ctx = get_context()
 
@@ -188,7 +190,7 @@ async def search_books(
     # Generate query embedding
     query_embedding = await run_sync(ctx["embedding_client"].embed_query, query)
 
-    # Search each book
+    # Search each book, then keep the n_results closest matches overall
     all_results = []
     for book in books:
         try:
@@ -198,7 +200,7 @@ async def search_books(
                 query_embedding,
                 n_results,
             )
-            for chunk in retrieved.chunks:
+            for chunk, distance in zip(retrieved.chunks, retrieved.distances):
                 all_results.append({
                     "book_id": book.id,
                     "book_title": book.title,
@@ -207,12 +209,15 @@ async def search_books(
                     "chapter_number": chunk.metadata.chapter_number,
                     "page_number": chunk.metadata.page_number,
                     "chunk_id": chunk.id,
+                    "score": round(1 - distance, 4),
                 })
         except Exception:
             # Skip books that fail (e.g., missing collection)
+            logger.warning("search_books: query failed for %s", book.id, exc_info=True)
             continue
 
-    return json.dumps(all_results, indent=2)
+    all_results.sort(key=lambda r: r["score"], reverse=True)
+    return json.dumps(all_results[:n_results], indent=2)
 
 
 # =============================================================================
@@ -287,7 +292,9 @@ async def get_chapter_summary(book_id: str, chapter_number: int) -> str:
 
     Args:
         book_id: The book ID
-        chapter_number: The chapter number (1-indexed)
+        chapter_number: The book's own chapter number ("CHAPTER 12" is 12).
+            Unnumbered sections (introduction, epilogue) are numbered after the
+            last chapter; get_book_index lists them all.
 
     Returns JSON with chapter summary, key concepts, and narratives.
     """

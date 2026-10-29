@@ -8,6 +8,10 @@ import chromadb
 from chromadb.config import Settings
 
 from book_companion.models import Chunk, ChunkMetadata, RetrievedContext
+from book_companion.processing.quality import is_low_value_chunk
+
+# Fetch extra candidates so dropping index pages/endnotes still leaves n_results.
+OVERFETCH = 3
 
 
 def get_data_dir() -> Path:
@@ -107,24 +111,32 @@ class VectorStore:
             query_embedding: The query embedding vector
             n_results: Number of results to return
 
+        Index pages, endnotes and bare headings are dropped.
+
         Returns:
-            RetrievedContext with chunks and formatted context
+            RetrievedContext with chunks, formatted context and distances
         """
         collection = self.get_or_create_collection(book_id)
 
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=n_results * OVERFETCH,
             include=["documents", "metadatas", "distances"],
         )
 
         chunks = []
+        distances = []
         if results["ids"] and results["ids"][0]:
             for i, chunk_id in enumerate(results["ids"][0]):
+                if len(chunks) >= n_results:
+                    break
                 metadata_dict = results["metadatas"][0][i]
+                text = results["documents"][0][i]
+                if is_low_value_chunk(text, metadata_dict.get("chapter_title")):
+                    continue
                 chunk = Chunk(
                     id=chunk_id,
-                    text=results["documents"][0][i],
+                    text=text,
                     metadata=ChunkMetadata(
                         book_id=metadata_dict["book_id"],
                         chapter_title=metadata_dict.get("chapter_title") or None,
@@ -135,6 +147,7 @@ class VectorStore:
                     ),
                 )
                 chunks.append(chunk)
+                distances.append(float(results["distances"][0][i]))
 
         # Format context for LLM
         formatted_context = self._format_context(chunks)
@@ -144,6 +157,7 @@ class VectorStore:
             chunks=chunks,
             formatted_context=formatted_context,
             chunk_ids=chunk_ids,
+            distances=distances,
         )
 
     def _format_context(self, chunks: list[Chunk]) -> str:
