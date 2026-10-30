@@ -67,6 +67,11 @@ def get_pool() -> pool.ThreadedConnectionPool:
         minconn=1,
         maxconn=10,
         dsn=url,
+        # Notice dropped connections instead of hanging on them
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=3,
     )
     return _pool
 
@@ -85,14 +90,20 @@ def get_connection() -> Generator[psycopg2.extensions.connection, None, None]:
     """
     pool = get_pool()
     conn = pool.getconn()
+    if conn.closed:
+        # Neon drops idle connections (e.g. during a long summarization), and
+        # the pool would otherwise hand the dead one back.
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        if not conn.closed:
+            conn.rollback()
         raise
     finally:
-        pool.putconn(conn)
+        pool.putconn(conn, close=bool(conn.closed))
 
 
 @contextmanager

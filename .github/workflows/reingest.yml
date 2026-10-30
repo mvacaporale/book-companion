@@ -7,9 +7,9 @@ name: Re-ingest books
 # When it runs:
 #   - by hand from the Actions tab or the GitHub app (dry run by default);
 #   - as a dry run (read-only) on a PR that changes this file;
-#   - for real, on every book, when a change to this file merges to main.
-#     So to repair all books after a parser fix, touch this file in the PR
-#     (e.g. bump REINGEST_REASON below); otherwise leave it alone.
+#   - for real when a change to this file merges to main, on the books in
+#     REINGEST_BOOKS (blank = every book). So to repair books after a parser
+#     fix, set REINGEST_BOOKS/REINGEST_REASON in the PR; otherwise leave it alone.
 #
 # Repo secrets: GEMINI_API_KEY, DATABASE_URL (Neon), GWS_CREDENTIALS_JSON,
 # the same ones drive-sync.yml uses.
@@ -49,7 +49,9 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GWS_CREDENTIALS_JSON: ${{ secrets.GWS_CREDENTIALS_JSON }}
       GOOGLE_DRIVE_FOLDER_ID: 1ip13wKCBGznT2S2HSESUseiNciJBMFCm
-      REINGEST_REASON: '2026-10-29 chapter numbering, metadata and junk fixes (miciato-app#11)'
+      REINGEST_REASON: '2026-10-29 rebuild summaries lost to a dropped Neon connection'
+      # Books the merge-time run rebuilds (space-separated IDs; blank = every book)
+      REINGEST_BOOKS: 'fd287353 2220707a 3f819643'
     steps:
       - name: Check secrets
         run: |
@@ -65,7 +67,7 @@ jobs:
       - name: Re-ingest
         env:
           BOOKRC_GWS_CREDENTIALS: ${{ runner.temp }}/gws-credentials.json
-          BOOK_IDS: ${{ inputs.book_ids }}
+          BOOK_IDS: ${{ github.event_name == 'workflow_dispatch' && inputs.book_ids || env.REINGEST_BOOKS }}
           DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
           TITLE: ${{ inputs.title }}
           AUTHOR: ${{ inputs.author }}
