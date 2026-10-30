@@ -38,3 +38,35 @@ def test_closed_connection_is_discarded(monkeypatch):
 
     assert live.committed
     assert pool.returned == [(dead, True), (live, False)]
+
+
+class StaleConn(FakeConn):
+    """Looks open, but the server dropped it while it sat idle."""
+
+    def cursor(self):
+        conn = self
+
+        class Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql):
+                conn.closed = 2
+                raise database.psycopg2.OperationalError("SSL connection has been closed unexpectedly")
+
+        return Cursor()
+
+
+def test_long_idle_connection_is_pinged_and_replaced(monkeypatch):
+    stale, live = StaleConn(), FakeConn()
+    pool = FakePool([stale, live])
+    monkeypatch.setattr(database, "get_pool", lambda: pool)
+    monkeypatch.setitem(database._last_used, id(stale), 0.0)  # idle "forever"
+
+    with database.get_connection() as conn:
+        assert conn is live
+
+    assert pool.returned == [(stale, True), (live, False)]

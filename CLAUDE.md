@@ -105,7 +105,7 @@ Backend is auto-selected in `storage/__init__.py` by `is_postgres_configured()`:
 
 - Postgres: `PgVectorStore` (pgvector), `PgBookRegistryStore`, `PgSessionStore`, `PgBookIndexStore`
 - File-based: `VectorStore` (ChromaDB), `BookRegistryStore` (books.json), `SessionStore` (~/.bookrc/sessions/), `BookIndexStore` (~/.bookrc/indices/)
-- `get_connection()` discards pooled connections Neon has already closed (it drops idle ones, e.g. during a long summarization) and the pool uses TCP keepalives.
+- `get_connection()` discards pooled connections Neon has already closed and pings any idle for over 60 s before reuse (Neon drops idle ones, e.g. during a long summarization); the pool also uses TCP keepalives.
 - Always get stores from the `get_*_store()` factories (CLI, ingestion, MCP); constructing `VectorStore()`/`BookRegistryStore()` directly silently bypasses Neon.
 - Migrate file → Postgres with `scripts/migrate_to_postgres.py` (`export`/`import`/`verify`)
 

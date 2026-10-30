@@ -49,7 +49,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GWS_CREDENTIALS_JSON: ${{ secrets.GWS_CREDENTIALS_JSON }}
       GOOGLE_DRIVE_FOLDER_ID: 1ip13wKCBGznT2S2HSESUseiNciJBMFCm
-      REINGEST_REASON: '2026-10-29 rebuild summaries lost to a dropped Neon connection'
+      REINGEST_REASON: '2026-10-30 retry: ping idle Neon connections; Gemini credits topped up'
       # Books the merge-time run rebuilds (space-separated IDs; blank = every book)
       REINGEST_BOOKS: 'fd287353 2220707a 3f819643'
     steps:
