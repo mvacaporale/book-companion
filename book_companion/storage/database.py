@@ -1,6 +1,7 @@
 """PostgreSQL database connection management for Cloud SQL with pgvector."""
 
 import os
+import time
 from contextlib import contextmanager
 from typing import Generator, Optional
 
@@ -11,6 +12,11 @@ from psycopg2.extras import RealDictCursor
 
 # Global connection pool
 _pool: Optional[pool.ThreadedConnectionPool] = None
+
+# When each pooled connection was last returned, so one that sat idle long
+# enough for Neon to drop it can be checked before reuse.
+_last_used: dict[int, float] = {}
+IDLE_CHECK_SECONDS = 60
 
 
 def get_database_url() -> Optional[str]:
@@ -89,12 +95,7 @@ def get_connection() -> Generator[psycopg2.extensions.connection, None, None]:
         A database connection that auto-commits on success.
     """
     pool = get_pool()
-    conn = pool.getconn()
-    if conn.closed:
-        # Neon drops idle connections (e.g. during a long summarization), and
-        # the pool would otherwise hand the dead one back.
-        pool.putconn(conn, close=True)
-        conn = pool.getconn()
+    conn = _live_connection(pool)
     try:
         yield conn
         conn.commit()
@@ -103,7 +104,32 @@ def get_connection() -> Generator[psycopg2.extensions.connection, None, None]:
             conn.rollback()
         raise
     finally:
+        _last_used[id(conn)] = time.monotonic()
         pool.putconn(conn, close=bool(conn.closed))
+
+
+def _live_connection(pool: pool.ThreadedConnectionPool) -> psycopg2.extensions.connection:
+    """A pooled connection that is still open.
+
+    Neon drops idle connections (e.g. during a long summarization) and the
+    pool would hand the dead one back, so closed connections are replaced and
+    long-idle ones are pinged first.
+    """
+    for _ in range(3):
+        conn = pool.getconn()
+        idle = time.monotonic() - _last_used.get(id(conn), time.monotonic())
+        if not conn.closed and idle > IDLE_CHECK_SECONDS:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                conn.rollback()
+            except psycopg2.Error:
+                pass  # conn.closed is now set
+        if not conn.closed:
+            return conn
+        _last_used.pop(id(conn), None)
+        pool.putconn(conn, close=True)
+    return pool.getconn()
 
 
 @contextmanager
