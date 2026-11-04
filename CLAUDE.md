@@ -359,6 +359,13 @@ bounds on anything with breaking majors (e.g. `mcp<2`: mcp 2.x removed `FastMCP`
 To run a local checkout instead (e.g. testing a branch), swap the last line for
 `uv run --directory <checkout> bookrc-mcp`.
 
+The registration is user scope, so the server is available in every folder
+(Lodestone, Talus, etc.). If `claude mcp list` shows it as `✘ Failed to connect`
+(in-session: "Connection closed"), check `pass-cli test` first: a logged-out Mac
+Proton Pass session is the usual cause, and it also breaks every other
+`pass-cli run` server (e.g. x-twitter). Fix with an interactive `pass-cli login`
+on the Mac (Claude can't do this for you), then restart the Claude Code session.
+
 State lives in one **Neon Postgres** project (`DATABASE_URL`), shared by both machines.
 
 Quick local test (MCP inspector): `mcp dev book_companion/mcp/server.py`.

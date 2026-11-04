@@ -247,6 +247,13 @@ Costs are automatically tracked and can be viewed with `bookrc stats`. Token cou
 
 ## Troubleshooting
 
+### MCP server "Failed to connect" / "Connection closed"
+
+The MCP launcher fetches secrets with `pass-cli run`, so it dies immediately if the
+Proton Pass CLI has no session. Run `pass-cli test`; if it reports no session, run
+`pass-cli login` (interactive), then start a new Claude Code session. The server is
+registered at user scope, so it works from any folder once secrets resolve.
+
 ### "GEMINI_API_KEY not set"
 
 Make sure you've added the API key to your shell config:
