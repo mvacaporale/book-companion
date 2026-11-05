@@ -438,7 +438,7 @@ async def get_stats(book_id: Optional[str] = None) -> str:
 
         # Get index for summarization tokens
         index = await run_sync(ctx["index_store"].load, book_id)
-        summarization_model = index.model_used if index else "gemini-3-flash-preview"
+        summarization_model = index.model_used if index else "gemini-3.8-flash"
 
         # Calculate ingestion cost
         ingestion_input = book.summarization_input_tokens
@@ -455,7 +455,7 @@ async def get_stats(book_id: Optional[str] = None) -> str:
             chat_output += usage.output_tokens
 
         # Estimate chat cost (use gemini as default)
-        chat_cost = calculate_cost("gemini-3-flash-preview", chat_input, chat_output)
+        chat_cost = calculate_cost("gemini-3.8-flash", chat_input, chat_output)
 
         return json.dumps({
             "book_id": book_id,
@@ -506,10 +506,10 @@ async def get_stats(book_id: Optional[str] = None) -> str:
                 total_chat_output += usage.output_tokens
 
         ingestion_cost = calculate_cost(
-            "gemini-3-flash-preview", total_ingestion_input, total_ingestion_output
+            "gemini-3.8-flash", total_ingestion_input, total_ingestion_output
         )
         chat_cost = calculate_cost(
-            "gemini-3-flash-preview", total_chat_input, total_chat_output
+            "gemini-3.8-flash", total_chat_input, total_chat_output
         )
 
         return json.dumps({
@@ -632,7 +632,7 @@ async def _chat_single_book(
     output_tokens = last_msg.output_tokens or 0 if last_msg else 0
 
     # Calculate cost
-    model = "gemini-3-flash-preview" if provider == "gemini" else "claude-sonnet-4-20250514"
+    model = "gemini-3.8-flash" if provider == "gemini" else "claude-sonnet-4-20250514"
     cost = calculate_cost(model, input_tokens, output_tokens)
 
     return json.dumps({
@@ -758,7 +758,7 @@ async def _chat_multi_book(
     )
 
     # Calculate cost
-    model = "gemini-3-flash-preview" if provider == "gemini" else "claude-sonnet-4-20250514"
+    model = "gemini-3.8-flash" if provider == "gemini" else "claude-sonnet-4-20250514"
     cost = calculate_cost(model, response.input_tokens or 0, response.output_tokens or 0)
 
     return json.dumps({

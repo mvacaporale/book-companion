@@ -7,6 +7,8 @@ from typing import Optional
 # Gemini rates checked November 2026 (Gemini API list prices, standard tier)
 PRICING = {
     # Gemini models
+    # 3.8 Flash intro rate; reported to double on 2027-01-01
+    "gemini-3.8-flash": {"input": 0.75, "output": 3.75},
     "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
     "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},
     "gemini-2.5-pro": {"input": 1.25, "output": 5.00},
@@ -31,7 +33,7 @@ def calculate_cost(
     """Calculate the cost for token usage.
 
     Args:
-        model: Model identifier (e.g., "gemini-3-flash-preview")
+        model: Model identifier (e.g., "gemini-3.8-flash")
         input_tokens: Number of input/prompt tokens
         output_tokens: Number of output/completion tokens
 

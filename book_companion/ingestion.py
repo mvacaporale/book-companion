@@ -53,7 +53,7 @@ def ingest_book(
     title: Optional[str] = None,
     author: Optional[str] = None,
     force: bool = False,
-    model: str = "gemini-3-flash-preview",
+    model: str = "gemini-3.8-flash",
     max_workers: int = 2,
     skip_summary: bool = False,
     drive_file_id: Optional[str] = None,

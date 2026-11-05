@@ -147,8 +147,8 @@ The navigation index is included in the system prompt, giving the LLM a "map" of
 | `BOOKRC_DB_PATH` | Custom file-based data directory (default: ~/.bookrc/); ignored when `DATABASE_URL` is set |
 
 **Default Models:**
-- Summarization: `gemini-3-flash-preview` (configurable via `--model`)
-- Chat: `gemini-3-flash-preview` (configurable via `--provider`)
+- Summarization: `gemini-3.8-flash` (configurable via `--model`)
+- Chat: `gemini-3.8-flash` (configurable via `--provider`)
 
 ## Google Drive Integration
 
@@ -289,9 +289,9 @@ Token usage is tracked automatically for all LLM operations:
 - View with `bookrc stats` or `bookrc info <book_id>`
 
 **Summarization** (Gemini 3 Flash, per book - default):
-- Input: ~200K tokens → ~$0.02
-- Output: ~26K tokens → ~$0.01
-- **Total: ~$0.03 per book** (cheap, use 2 workers to avoid rate limits)
+- Input: ~200K tokens → ~$0.15
+- Output: ~26K tokens → ~$0.10
+- **Total: ~$0.25 per book** (gemini-3.8-flash) (cheap, use 2 workers to avoid rate limits)
 
 **Summarization** (Claude Sonnet 4, per book - alternative):
 - Input: ~200K tokens → ~$0.60
@@ -305,7 +305,8 @@ Token usage is tracked automatically for all LLM operations:
 **Model Pricing** (per 1M tokens):
 | Model | Input | Output |
 |-------|-------|--------|
-| gemini-3-flash-preview (default) | $0.50 | $3.00 |
+| gemini-3.8-flash (default; intro rate, ~2x from 2027-01-01) | $0.75 | $3.75 |
+| gemini-3-flash-preview | $0.50 | $3.00 |
 | gemini-2.5-flash | $0.30 | $2.50 |
 | claude-sonnet-4 | $3.00 | $15.00 |
 
