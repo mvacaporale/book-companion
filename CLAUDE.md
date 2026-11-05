@@ -351,6 +351,12 @@ claude mcp add book-companion --scope user -- \
   uvx --refresh --from git+https://github.com/mvacaporale/book-companion bookrc-mcp
 ```
 
+The Claude desktop chat app has its own registration in
+`~/Library/Application Support/Claude/claude_desktop_config.json` (`mcpServers.book-companion`).
+Keep it on the same `pass-cli run … uvx --refresh --from git+…` command, not a local
+checkout, or desktop chats silently run whatever branch that checkout is on. The desktop
+app only re-reads it on restart.
+
 miciato is identical but adds `-e PROTON_PASS_KEY_PROVIDER=fs` and uses absolute
 paths (`/root/.local/bin/pass-cli`, `/root/.local/bin/uvx`).
 See the parent memory `pass-cli-miciato-headless` for the box's headless pass-cli rules.
