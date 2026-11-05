@@ -263,7 +263,7 @@ class BookIndex(BaseModel):
     chapter_index: list[ChapterIndexEntry] = Field(default_factory=list)
     all_narratives: list[Narrative] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
-    model_used: str = "gemini-2.5-flash"  # Track which model generated summaries
+    model_used: str = "gemini-3.8-flash"  # Track which model generated summaries
     # Token tracking for summarization
     total_input_tokens: int = 0
     total_output_tokens: int = 0

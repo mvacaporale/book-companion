@@ -52,8 +52,8 @@ def cli():
 @click.option("--title", "-t", help="Override the book title")
 @click.option("--author", "-a", help="Override the book author")
 @click.option("--force", "-f", is_flag=True, help="Re-ingest even if already exists")
-@click.option("--model", "-m", default="gemini-2.5-flash",
-              help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
+@click.option("--model", "-m", default="gemini-3.8-flash",
+              help="Model for summarization (claude-sonnet-4, gemini-3.8-flash)")
 @click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step (faster, but no book index)")
 def ingest(path: Path, title: Optional[str], author: Optional[str], force: bool,
@@ -622,7 +622,7 @@ def stats(book_id: Optional[str]):
                 f"  Cost: {format_cost(ingest_cost)}",
             ])
         elif book.summarization_input_tokens > 0 or book.summarization_output_tokens > 0:
-            model = book_index.model_used if book_index else "gemini-2.5-flash"
+            model = book_index.model_used if book_index else "gemini-3.8-flash"
             ingest_cost = calculate_cost(
                 model,
                 book.summarization_input_tokens,
@@ -665,7 +665,7 @@ def stats(book_id: Optional[str]):
             # Calculate chat cost (estimate with most recent provider)
             if sessions:
                 provider = sessions[0].provider
-                model = "gemini-2.5-flash" if provider == "gemini" else "claude-sonnet-4-20250514"
+                model = "gemini-3.8-flash" if provider == "gemini" else "claude-sonnet-4-20250514"
                 chat_cost = calculate_cost(model, total_chat_input, total_chat_output)
                 info_lines.append(f"  Est. cost ({provider}): {format_cost(chat_cost)}")
         else:
@@ -700,7 +700,7 @@ def stats(book_id: Optional[str]):
             # Ingestion tokens
             ingest_input = 0
             ingest_output = 0
-            ingest_model = "gemini-2.5-flash"
+            ingest_model = "gemini-3.8-flash"
 
             if book_index:
                 ingest_input = book_index.total_input_tokens
@@ -723,7 +723,7 @@ def stats(book_id: Optional[str]):
 
             # Calculate costs
             ingest_cost = calculate_cost(ingest_model, ingest_input, ingest_output)
-            chat_model = "gemini-2.5-flash" if chat_provider == "gemini" else "claude-sonnet-4-20250514"
+            chat_model = "gemini-3.8-flash" if chat_provider == "gemini" else "claude-sonnet-4-20250514"
             chat_cost = calculate_cost(chat_model, chat_input, chat_output)
             total_cost = ingest_cost + chat_cost
 
@@ -753,9 +753,9 @@ def stats(book_id: Optional[str]):
             total_chat = total_chat_input + total_chat_output
             total_all = total_ingest + total_chat
 
-            # Estimate total cost (using gemini-2.5-flash as default)
-            ingest_cost = calculate_cost("gemini-2.5-flash", total_ingest_input, total_ingest_output)
-            chat_cost = calculate_cost("gemini-2.5-flash", total_chat_input, total_chat_output)
+            # Estimate total cost (using gemini-3.8-flash as default)
+            ingest_cost = calculate_cost("gemini-3.8-flash", total_ingest_input, total_ingest_output)
+            chat_cost = calculate_cost("gemini-3.8-flash", total_chat_input, total_chat_output)
 
             console.print()
             console.print(f"[bold]Totals ({books_with_data} books with data):[/bold]")
@@ -940,8 +940,8 @@ def drive_list(folder_id: Optional[str]):
 @click.argument("file_id")
 @click.option("--title", "-t", help="Override the book title")
 @click.option("--author", "-a", help="Override the book author")
-@click.option("--model", "-m", default="gemini-2.5-flash",
-              help="Model for summarization (claude-sonnet-4, gemini-2.5-flash)")
+@click.option("--model", "-m", default="gemini-3.8-flash",
+              help="Model for summarization (claude-sonnet-4, gemini-3.8-flash)")
 @click.option("--workers", "-j", default=2, help="Parallel workers for chapter summarization (default: 2)")
 @click.option("--skip-summary", is_flag=True, help="Skip summarization step")
 @click.option("--force", "-f", is_flag=True, help="Re-ingest even if already ingested (keeps the book ID)")

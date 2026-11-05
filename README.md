@@ -9,7 +9,7 @@ A CLI application to chat with books (PDF, EPUB, Markdown) using RAG and LLMs, w
 - **Hierarchical summarization**: Auto-generate chapter summaries, book overview, and extract key narratives
 - **Story & study extraction**: Preserve the author's examples, research studies, and case studies
 - **Multiple LLM providers**: Chat using Gemini or Claude
-- **Configurable models**: Use any Gemini model for summarization (gemini-2.5-flash, gemini-3-flash, etc.)
+- **Configurable models**: Use any Gemini model for summarization (default gemini-3.8-flash; gemini-3-flash-preview, gemini-2.5-flash, etc.)
 - **Session management**: Save and resume chat sessions
 - **Chapter-aware chunking**: Intelligent text splitting that respects document structure
 - **Token usage tracking**: Track tokens and costs for all LLM operations (ingestion and chat)
@@ -102,7 +102,7 @@ One-time setup:
 uv run bookrc ingest ~/Books/my-book.pdf
 
 # Use a different model for summarization
-uv run bookrc ingest ~/Books/book.pdf --model gemini-3-flash
+uv run bookrc ingest ~/Books/book.pdf --model gemini-2.5-flash
 
 # Skip summarization for faster ingestion
 uv run bookrc ingest ~/Books/book.pdf --skip-summary
@@ -225,14 +225,14 @@ You can customize the location with the `BOOKRC_DB_PATH` environment variable.
 
 | Provider | Model | Environment Variable |
 |----------|-------|---------------------|
-| Gemini (default) | gemini-2.5-flash | `GEMINI_API_KEY` |
+| Gemini (default) | gemini-3.8-flash | `GEMINI_API_KEY` |
 | Claude | claude-sonnet-4 | `ANTHROPIC_API_KEY` |
 
 ## Cost Estimates
 
-| Operation | Approximate Cost (Gemini 2.5 Flash) |
+| Operation | Approximate Cost (Gemini 3.8 Flash) |
 |-----------|-------------------------------------|
-| Ingest book (with summaries) | ~$0.02-0.03 |
+| Ingest book (with summaries) | ~$0.25 |
 | Chat query | ~$0.001-0.01 |
 
 Costs are automatically tracked and can be viewed with `bookrc stats`. Token counts are stored per-session and per-book for full transparency.
@@ -241,8 +241,9 @@ Costs are automatically tracked and can be viewed with `bookrc stats`. Token cou
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) |
 |-------|----------------------|------------------------|
-| gemini-2.5-flash | $0.075 | $0.30 |
-| gemini-3-flash | $0.10 | $0.40 |
+| gemini-3.8-flash (default; intro rate, ~2x from 2027-01-01) | $0.75 | $3.75 |
+| gemini-3-flash-preview | $0.50 | $3.00 |
+| gemini-2.5-flash | $0.30 | $2.50 |
 | claude-sonnet-4 | $3.00 | $15.00 |
 
 ## Troubleshooting

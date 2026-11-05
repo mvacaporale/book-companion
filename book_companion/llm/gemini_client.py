@@ -14,14 +14,14 @@ class GeminiClient(LLMClient):
     """LLM client for Google Gemini."""
 
     provider = "gemini"
-    model = "gemini-2.5-flash"
+    model = "gemini-3.8-flash"
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """Initialize the Gemini client.
 
         Args:
             api_key: Gemini API key. Defaults to GEMINI_API_KEY env var.
-            model: Model to use. Defaults to gemini-2.5-flash.
+            model: Model to use. Defaults to gemini-3.8-flash.
         """
         api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not api_key:
