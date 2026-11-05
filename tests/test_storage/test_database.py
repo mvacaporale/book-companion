@@ -64,7 +64,7 @@ def test_long_idle_connection_is_pinged_and_replaced(monkeypatch):
     stale, live = StaleConn(), FakeConn()
     pool = FakePool([stale, live])
     monkeypatch.setattr(database, "get_pool", lambda: pool)
-    monkeypatch.setitem(database._last_used, id(stale), 0.0)  # idle "forever"
+    monkeypatch.setitem(database._last_used, id(stale), float("-inf"))  # idle "forever", even on a freshly booted CI runner
 
     with database.get_connection() as conn:
         assert conn is live
