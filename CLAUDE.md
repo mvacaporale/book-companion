@@ -147,7 +147,7 @@ The navigation index is included in the system prompt, giving the LLM a "map" of
 | `BOOKRC_DB_PATH` | Custom file-based data directory (default: ~/.bookrc/); ignored when `DATABASE_URL` is set |
 
 **Default Models:**
-- Summarization: `gemini-3.8-flash` (latest; configurable via `--model`)
+- Summarization: `gemini-3-flash-preview` (configurable via `--model`)
 - Chat: `gemini-3-flash-preview` (configurable via `--provider`)
 
 ## Google Drive Integration
