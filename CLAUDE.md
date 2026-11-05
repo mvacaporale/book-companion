@@ -148,7 +148,7 @@ The navigation index is included in the system prompt, giving the LLM a "map" of
 
 **Default Models:**
 - Summarization: `gemini-3.8-flash` (latest; configurable via `--model`)
-- Chat: `gemini-2.5-flash` (configurable via `--provider`)
+- Chat: `gemini-3-flash-preview` (configurable via `--provider`)
 
 ## Google Drive Integration
 
@@ -305,8 +305,8 @@ Token usage is tracked automatically for all LLM operations:
 **Model Pricing** (per 1M tokens):
 | Model | Input | Output |
 |-------|-------|--------|
-| gemini-3-flash | $0.10 | $0.40 |
-| gemini-2.5-flash | $0.075 | $0.30 |
+| gemini-3-flash-preview (default) | $0.50 | $3.00 |
+| gemini-2.5-flash | $0.30 | $2.50 |
 | claude-sonnet-4 | $3.00 | $15.00 |
 
 ## MCP Server

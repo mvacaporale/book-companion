@@ -86,7 +86,7 @@ Respond ONLY with valid JSON, no other text."""
 class Summarizer:
     """Generates hierarchical summaries of books using LLMs."""
 
-    DEFAULT_MODEL = "gemini-2.5-flash"
+    DEFAULT_MODEL = "gemini-3-flash-preview"
 
     # Model provider detection
     CLAUDE_MODELS = ["claude-sonnet-4-20250514", "claude-sonnet-4", "claude-haiku", "claude-opus"]
